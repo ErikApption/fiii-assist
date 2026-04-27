@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="QfxWatcher.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="QFX Watcher – Actual Budget Import">
+
+    <Grid>
+        <NavigationView
+            x:Name="NavView"
+            IsSettingsVisible="False"
+            PaneDisplayMode="Left"
+            IsBackButtonVisible="Collapsed"
+            SelectionChanged="NavView_SelectionChanged">
+
+            <NavigationView.MenuItems>
+                <NavigationViewItem
+                    Content="Dashboard"
+                    Tag="Dashboard"
+                    Icon="Home" />
+                <NavigationViewItem
+                    Content="Settings"
+                    Tag="Settings"
+                    Icon="Setting" />
+            </NavigationView.MenuItems>
+
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+    </Grid>
+</Window>
