@@ -102,7 +102,7 @@ public partial class DashboardViewModel : ObservableObject
 
         try
         {
-            _budget.Configure(cfg.ServerUrl);
+            _budget.Configure(cfg.ServerUrl, cfg.IgnoreSslCertificateValidation);
             IsConnected  = await _budget.LoginAsync(cfg.ServerPassword);
             StatusMessage = IsConnected
                 ? $"Watching: {WatchedFolder} | Connected to Actual Budget"

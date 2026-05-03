@@ -17,8 +17,9 @@ namespace QfxWatcher.Services;
 /// </remarks>
 public class ActualBudgetService : IDisposable
 {
-    private readonly HttpClient _http = new();
+    private HttpClient _http = CreateHttpClient(ignoreSslCertificateValidation: false);
     private string? _token;
+    private bool _ignoreSslCertificateValidation;
 
     // JSON options shared across all calls
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -29,11 +30,29 @@ public class ActualBudgetService : IDisposable
 
     // ── Configuration ─────────────────────────────────────────────────────────
 
-    public void Configure(string serverUrl)
+    public void Configure(string serverUrl, bool ignoreSslCertificateValidation = false)
     {
+        if (_ignoreSslCertificateValidation != ignoreSslCertificateValidation)
+        {
+            _http.Dispose();
+            _http = CreateHttpClient(ignoreSslCertificateValidation);
+            _ignoreSslCertificateValidation = ignoreSslCertificateValidation;
+        }
+
         var baseUrl = serverUrl.TrimEnd('/');
         _http.BaseAddress = new Uri(baseUrl + "/");
+        _http.DefaultRequestHeaders.Authorization = null;
         _token = null;
+    }
+
+    private static HttpClient CreateHttpClient(bool ignoreSslCertificateValidation)
+    {
+        var handler = new HttpClientHandler();
+        if (ignoreSslCertificateValidation)
+            handler.ServerCertificateCustomValidationCallback =
+                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+
+        return new HttpClient(handler, disposeHandler: true);
     }
 
     // ── Authentication ────────────────────────────────────────────────────────
@@ -51,8 +70,8 @@ public class ActualBudgetService : IDisposable
         if (!response.IsSuccessStatusCode)
             return false;
 
-        var result = await response.Content
-            .ReadFromJsonAsync<LoginResponse>(JsonOptions, ct);
+        var result = await ReadJsonOrThrowAsync<LoginResponse>(
+            response, "account/login", ct);
 
         if (result?.Status == "ok" && !string.IsNullOrWhiteSpace(result.Data?.Token))
         {
@@ -76,8 +95,8 @@ public class ActualBudgetService : IDisposable
         using var response = await _http.GetAsync("api/accounts", ct);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content
-            .ReadFromJsonAsync<ApiListResponse<ActualAccount>>(JsonOptions, ct);
+        var result = await ReadJsonOrThrowAsync<ApiListResponse<ActualAccount>>(
+            response, "api/accounts", ct);
 
         return result?.Data ?? [];
     }
@@ -112,8 +131,8 @@ public class ActualBudgetService : IDisposable
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content
-            .ReadFromJsonAsync<ImportResponse>(JsonOptions, ct);
+        var result = await ReadJsonOrThrowAsync<ImportResponse>(
+            response, $"api/accounts/{accountId}/import-transactions", ct);
 
         return result?.Data?.Added ?? payload.Length;
     }
@@ -125,6 +144,27 @@ public class ActualBudgetService : IDisposable
         if (_token == null)
             throw new InvalidOperationException(
                 "Not authenticated. Call LoginAsync first.");
+    }
+
+    private async Task<T?> ReadJsonOrThrowAsync<T>(
+        HttpResponseMessage response,
+        string endpoint,
+        CancellationToken ct)
+    {
+        var raw = await response.Content.ReadAsStringAsync(ct);
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(raw, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            var snippet = raw.Length > 120 ? raw[..120] + "..." : raw;
+            throw new InvalidOperationException(
+                $"Expected JSON from '{endpoint}', but received non-JSON content. " +
+                "Check the Server URL and reverse-proxy/API routing. " +
+                $"Response starts with: {snippet}");
+        }
     }
 
     public void Dispose() => _http.Dispose();

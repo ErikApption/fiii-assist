@@ -3,13 +3,8 @@
     x:Class="QfxWatcher.Pages.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:converters="using:QfxWatcher.Converters"
     xmlns:models="using:QfxWatcher.Models"
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-
-    <Page.Resources>
-        <converters:BoolToVisibilityConverter x:Key="BoolToVisibility" />
-    </Page.Resources>
 
     <ScrollViewer Padding="24,16,24,16">
         <StackPanel Spacing="20" MaxWidth="600" HorizontalAlignment="Left">
@@ -39,24 +34,24 @@
                         PlaceholderText="Enter your Actual Budget password"
                         Password="{x:Bind ViewModel.ServerPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
+                    <ToggleSwitch
+                        Header="Ignore SSL certificate validation"
+                        IsOn="{x:Bind ViewModel.IgnoreSslCertificateValidation, Mode=TwoWay}" />
+
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="Test Connection"
                                 Command="{x:Bind ViewModel.TestConnectionCommand}"
-                                IsEnabled="{x:Bind ViewModel.IsTestingConnection,
-                                            Converter={StaticResource BoolToVisibility},
-                                            ConverterParameter=Invert, Mode=OneWay}" />
+                                IsEnabled="{x:Bind ViewModel.CanTestConnection, Mode=OneWay}" />
                         <ProgressRing
                             IsActive="{x:Bind ViewModel.IsTestingConnection, Mode=OneWay}"
                             Width="20" Height="20"
-                            Visibility="{x:Bind ViewModel.IsTestingConnection,
-                                         Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                            Visibility="{x:Bind ViewModel.IsTestingConnection, Mode=OneWay}" />
                     </StackPanel>
 
                     <TextBlock
                         Text="{x:Bind ViewModel.TestConnectionMessage, Mode=OneWay}"
                         TextWrapping="Wrap"
-                        Visibility="{x:Bind ViewModel.TestConnectionMessage.Length,
-                                     Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                        Visibility="{x:Bind ViewModel.HasTestConnectionMessage, Mode=OneWay}" />
 
                     <!-- Account list shown after successful connection test -->
                     <ComboBox
@@ -67,8 +62,7 @@
                         ItemsSource="{x:Bind ViewModel.Accounts, Mode=OneWay}"
                         SelectedValuePath="Id"
                         SelectedValue="{x:Bind ViewModel.DefaultAccountId, Mode=TwoWay}"
-                        Visibility="{x:Bind ViewModel.Accounts.Count,
-                                     Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                        Visibility="{x:Bind ViewModel.HasAccounts, Mode=OneWay}" />
 
                 </StackPanel>
             </Expander>

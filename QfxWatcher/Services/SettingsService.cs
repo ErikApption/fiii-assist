@@ -13,8 +13,9 @@ public class SettingsService
     private const string KeyServerPassword     = "ServerPassword";
     private const string KeyWatchFolder        = "WatchFolder";
     private const string KeyArchiveAfterImport = "ArchiveAfterImport";
-    private const string KeyConfirmBeforeImport= "ConfirmBeforeImport";
-    private const string KeyDefaultAccountId   = "DefaultAccountId";
+    private const string KeyConfirmBeforeImport = "ConfirmBeforeImport";
+    private const string KeyDefaultAccountId    = "DefaultAccountId";
+    private const string KeyIgnoreSslValidation = "IgnoreSslValidation";
 
     // In-memory fallback used when LocalSettings is not available.
     private readonly Dictionary<string, object?> _fallback = [];
@@ -36,8 +37,9 @@ public class SettingsService
             ServerPassword      = GetString(KeyServerPassword),
             WatchFolder         = GetString(KeyWatchFolder),
             ArchiveAfterImport  = GetBool(KeyArchiveAfterImport, defaultValue: true),
-            ConfirmBeforeImport = GetBool(KeyConfirmBeforeImport, defaultValue: true),
-            DefaultAccountId    = GetString(KeyDefaultAccountId),
+            ConfirmBeforeImport         = GetBool(KeyConfirmBeforeImport, defaultValue: true),
+            DefaultAccountId            = GetString(KeyDefaultAccountId),
+            IgnoreSslCertificateValidation = GetBool(KeyIgnoreSslValidation),
         };
     }
 
@@ -49,6 +51,7 @@ public class SettingsService
         SetValue(KeyArchiveAfterImport,  settings.ArchiveAfterImport);
         SetValue(KeyConfirmBeforeImport, settings.ConfirmBeforeImport);
         SetValue(KeyDefaultAccountId,    settings.DefaultAccountId);
+        SetValue(KeyIgnoreSslValidation, settings.IgnoreSslCertificateValidation);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

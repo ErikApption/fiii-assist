@@ -36,4 +36,9 @@ public class AppSettings
     /// Default Actual Budget account ID to import into (optional).
     /// </summary>
     public string DefaultAccountId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When true, TLS/SSL certificate validation is bypassed for server requests.
+    /// </summary>
+    public bool IgnoreSslCertificateValidation { get; set; }
 }
