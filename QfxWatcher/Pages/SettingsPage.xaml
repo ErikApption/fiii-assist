@@ -28,11 +28,11 @@
                         Text="{x:Bind ViewModel.ServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                         InputScope="Url" />
 
-                    <TextBox
+                    <PasswordBox
                         x:Name="ApiKeyBox"
                         Header="Personal Access Token (API Key)"
                         PlaceholderText="Enter your Firefly III Personal Access Token"
-                        Text="{x:Bind ViewModel.ApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        Password="{x:Bind ViewModel.ApiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                     <ToggleSwitch
                         Header="Ignore SSL certificate validation"

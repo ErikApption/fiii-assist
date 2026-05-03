@@ -117,8 +117,8 @@ public class FireflyIIIService : IDisposable
         foreach (var t in transactions)
         {
             bool isDebit   = t.Amount <= 0;
-            var  amount    = Math.Abs(t.Amount).ToString("F2", CultureInfo.InvariantCulture);
-            var  description = !string.IsNullOrWhiteSpace(t.Name) ? t.Name
+            var amount      = Math.Abs(t.Amount).ToString("F2", CultureInfo.InvariantCulture);
+            var description = !string.IsNullOrWhiteSpace(t.Name) ? t.Name
                              : !string.IsNullOrWhiteSpace(t.Memo) ? t.Memo
                              : "Import";
 

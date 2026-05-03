@@ -77,7 +77,9 @@ public class SettingsService
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(AccountsCachePath)!);
+            var dir = Path.GetDirectoryName(AccountsCachePath);
+            if (dir == null) return;
+            Directory.CreateDirectory(dir);
             var json = JsonSerializer.Serialize(accounts.ToList(), JsonOptions);
             File.WriteAllText(AccountsCachePath, json);
         }
