@@ -9,15 +9,15 @@ namespace QfxWatcher.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject
 {
-    private readonly SettingsService     _settings;
-    private readonly ActualBudgetService _budget;
-    private readonly FileWatcherService  _watcher;
+    private readonly SettingsService    _settings;
+    private readonly FireflyIIIService  _firefly;
+    private readonly FileWatcherService _watcher;
 
     [ObservableProperty]
     private string _serverUrl = string.Empty;
 
     [ObservableProperty]
-    private string _serverPassword = string.Empty;
+    private string _apiKey = string.Empty;
 
     [ObservableProperty]
     private string _watchFolder = string.Empty;
@@ -51,15 +51,15 @@ public partial class SettingsViewModel : ObservableObject
 
     public bool HasAccounts => Accounts.Count > 0;
 
-    public ObservableCollection<ActualAccount> Accounts { get; } = [];
+    public ObservableCollection<FireflyAccount> Accounts { get; } = [];
 
     public SettingsViewModel(
-        SettingsService     settings,
-        ActualBudgetService budget,
-        FileWatcherService  watcher)
+        SettingsService    settings,
+        FireflyIIIService  firefly,
+        FileWatcherService watcher)
     {
         _settings = settings;
-        _budget   = budget;
+        _firefly  = firefly;
         _watcher  = watcher;
 
         Accounts.CollectionChanged += OnAccountsCollectionChanged;
@@ -74,13 +74,19 @@ public partial class SettingsViewModel : ObservableObject
     {
         var cfg = _settings.Load();
         ServerUrl           = cfg.ServerUrl;
-        ServerPassword      = cfg.ServerPassword;
+        ApiKey              = cfg.ApiKey;
         WatchFolder         = cfg.WatchFolder;
         ArchiveAfterImport  = cfg.ArchiveAfterImport;
         ConfirmBeforeImport = cfg.ConfirmBeforeImport;
         DefaultAccountId              = cfg.DefaultAccountId;
         IgnoreSslCertificateValidation = cfg.IgnoreSslCertificateValidation;
         DetectedFolder                 = FileWatcherService.DetectEdgeDownloadsFolder();
+
+        // Pre-populate accounts from the JSON cache
+        var cached = _settings.LoadAccounts();
+        Accounts.Clear();
+        foreach (var a in cached)
+            Accounts.Add(a);
     }
 
     [RelayCommand]
@@ -89,7 +95,7 @@ public partial class SettingsViewModel : ObservableObject
         _settings.Save(new AppSettings
         {
             ServerUrl           = ServerUrl.Trim(),
-            ServerPassword      = ServerPassword,
+            ApiKey              = ApiKey,
             WatchFolder         = WatchFolder.Trim(),
             ArchiveAfterImport  = ArchiveAfterImport,
             ConfirmBeforeImport = ConfirmBeforeImport,
@@ -107,24 +113,26 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(ApiKey))
+        {
+            TestConnectionMessage = "Please enter an API key first.";
+            return;
+        }
+
         IsTestingConnection   = true;
         TestConnectionMessage = "Connecting…";
         Accounts.Clear();
 
         try
         {
-            _budget.Configure(ServerUrl.Trim(), IgnoreSslCertificateValidation);
-            var ok = await _budget.LoginAsync(ServerPassword);
+            _firefly.Configure(ServerUrl.Trim(), ApiKey, IgnoreSslCertificateValidation);
+            var accounts = await _firefly.GetAccountsAsync();
 
-            if (!ok)
-            {
-                TestConnectionMessage = "❌ Authentication failed. Check your password.";
-                return;
-            }
-
-            var accounts = await _budget.GetAccountsAsync();
             foreach (var a in accounts)
                 Accounts.Add(a);
+
+            // Persist the fetched accounts to the JSON cache
+            _settings.SaveAccounts(accounts);
 
             TestConnectionMessage = accounts.Count > 0
                 ? $"✔ Connected. Found {accounts.Count} account(s)."

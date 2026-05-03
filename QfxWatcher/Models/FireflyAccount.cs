@@ -1,18 +1,17 @@
 namespace QfxWatcher.Models;
 
 /// <summary>
-/// An account returned by the Actual Budget REST API.
+/// An account returned by the Firefly III REST API.
 /// </summary>
-public class ActualAccount
+public class FireflyAccount
 {
-    public string Id { get; set; } = string.Empty;
+    public string Id   { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
-    public bool Closed { get; set; }
-    public bool OffBudget { get; set; }
+    public bool   Active { get; set; } = true;
 
     /// <summary>Convenience display name shown in the UI.</summary>
-    public string DisplayName => Closed ? $"{Name} (closed)" : Name;
+    public string DisplayName => Active ? Name : $"{Name} (inactive)";
 
     public override string ToString() => DisplayName;
 }

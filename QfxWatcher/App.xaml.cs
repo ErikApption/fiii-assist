@@ -10,15 +10,15 @@ namespace QfxWatcher;
 public partial class App : Application
 {
     // Simple manual DI – avoids pulling in a full DI container
-    internal static SettingsService     SettingsService     { get; } = new();
-    internal static ActualBudgetService ActualBudgetService { get; } = new();
-    internal static FileWatcherService  FileWatcherService  { get; } = new();
+    internal static SettingsService    SettingsService    { get; } = new();
+    internal static FireflyIIIService  FireflyIIIService  { get; } = new();
+    internal static FileWatcherService FileWatcherService { get; } = new();
 
     internal static DashboardViewModel DashboardViewModel { get; } =
-        new(SettingsService, FileWatcherService, ActualBudgetService);
+        new(SettingsService, FileWatcherService, FireflyIIIService);
 
     internal static SettingsViewModel SettingsViewModel { get; } =
-        new(SettingsService, ActualBudgetService, FileWatcherService);
+        new(SettingsService, FireflyIIIService, FileWatcherService);
 
     private MainWindow? _window;
 

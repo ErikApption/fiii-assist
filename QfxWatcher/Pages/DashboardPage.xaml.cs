@@ -49,12 +49,16 @@ public sealed partial class DashboardPage : Page
             return;
         }
 
-        // Load accounts
-        IReadOnlyList<ActualAccount> accounts = [];
+        // Load accounts from cache (or live if connected)
+        IReadOnlyList<FireflyAccount> accounts = [];
         if (ViewModel.IsConnected)
         {
-            try { accounts = await App.ActualBudgetService.GetAccountsAsync(); }
-            catch { /* will still allow import if account manually typed */ }
+            try { accounts = await App.FireflyIIIService.GetAccountsAsync(); }
+            catch { accounts = App.SettingsService.LoadAccounts(); }
+        }
+        else
+        {
+            accounts = App.SettingsService.LoadAccounts();
         }
 
         var dialog = new ContentDialog
@@ -88,7 +92,7 @@ public sealed partial class DashboardPage : Page
 
         if (accounts.Count > 0)
         {
-            foreach (var a in accounts.Where(a => !a.Closed))
+            foreach (var a in accounts.Where(a => a.Active))
                 accountCombo.Items.Add(a);
 
             // Pre-select default if configured
@@ -106,7 +110,7 @@ public sealed partial class DashboardPage : Page
             panel.Children.Add(new InfoBar
             {
                 Severity  = InfoBarSeverity.Warning,
-                Title     = "Could not load accounts from Actual Budget.",
+                Title     = "Could not load accounts from Firefly III.",
                 IsOpen    = true,
                 IsClosable= false,
             });
@@ -118,7 +122,7 @@ public sealed partial class DashboardPage : Page
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary)
         {
-            var selected = accountCombo.SelectedItem as ActualAccount;
+            var selected = accountCombo.SelectedItem as FireflyAccount;
             await ViewModel.ExecuteImportAsync(
                 filePath,
                 selected?.Id   ?? string.Empty,
