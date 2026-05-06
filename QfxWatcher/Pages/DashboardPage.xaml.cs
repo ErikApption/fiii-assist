@@ -1,6 +1,7 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using QfxWatcher.FireflyIII;
 using QfxWatcher.Models;
 using QfxWatcher.ViewModels;
 
@@ -50,7 +51,7 @@ public sealed partial class DashboardPage : Page
         }
 
         // Load accounts
-        IReadOnlyList<ActualAccount> accounts = [];
+        IReadOnlyList<AccountSingle> accounts = [];
         if (ViewModel.IsConnected)
         {
             try { accounts = await App.ActualBudgetService.GetAccountsAsync(); }
@@ -88,14 +89,14 @@ public sealed partial class DashboardPage : Page
 
         if (accounts.Count > 0)
         {
-            foreach (var a in accounts.Where(a => !a.Closed))
+            foreach (var a in accounts.Where(a => a.Data.Attributes is { Active: true }))
                 accountCombo.Items.Add(a);
 
             // Pre-select default if configured
             var cfg = App.SettingsService.Load();
             if (!string.IsNullOrWhiteSpace(cfg.DefaultAccountId))
             {
-                var def = accounts.FirstOrDefault(a => a.Id == cfg.DefaultAccountId);
+                var def = accounts.FirstOrDefault(a => a.Data.Id == cfg.DefaultAccountId);
                 if (def != null) accountCombo.SelectedItem = def;
             }
         }
@@ -118,11 +119,11 @@ public sealed partial class DashboardPage : Page
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary)
         {
-            var selected = accountCombo.SelectedItem as ActualAccount;
+            var selected = accountCombo.SelectedItem as AccountSingle;
             await ViewModel.ExecuteImportAsync(
                 filePath,
-                selected?.Id   ?? string.Empty,
-                selected?.Name ?? System.IO.Path.GetFileName(filePath));
+                selected?.Data.Id ?? string.Empty,
+                selected?.Data.Attributes?.Name ?? System.IO.Path.GetFileName(filePath));
         }
     }
 

@@ -11,7 +11,7 @@ public partial class App : Application
 {
     // Simple manual DI – avoids pulling in a full DI container
     internal static SettingsService     SettingsService     { get; } = new();
-    internal static ActualBudgetService ActualBudgetService { get; } = new();
+    internal static FireflyIIIService ActualBudgetService { get; } = new();
     internal static FileWatcherService  FileWatcherService  { get; } = new();
 
     internal static DashboardViewModel DashboardViewModel { get; } =

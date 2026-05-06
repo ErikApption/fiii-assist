@@ -1,16 +1,16 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using QfxWatcher.FireflyIII;
 using QfxWatcher.Models;
 using QfxWatcher.Services;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-
 namespace QfxWatcher.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly SettingsService     _settings;
-    private readonly ActualBudgetService _budget;
+    private readonly FireflyIIIService _budget;
     private readonly FileWatcherService  _watcher;
 
     [ObservableProperty]
@@ -35,6 +35,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _ignoreSslCertificateValidation;
 
     [ObservableProperty]
+    private bool _errorIfDuplicateHash;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTestConnectionMessage))]
     private string _testConnectionMessage = string.Empty;
 
@@ -51,11 +54,10 @@ public partial class SettingsViewModel : ObservableObject
 
     public bool HasAccounts => Accounts.Count > 0;
 
-    public ObservableCollection<ActualAccount> Accounts { get; } = [];
-
+    public ObservableCollection<AccountSingle> Accounts { get; } = [];
     public SettingsViewModel(
         SettingsService     settings,
-        ActualBudgetService budget,
+        FireflyIIIService budget,
         FileWatcherService  watcher)
     {
         _settings = settings;
@@ -80,6 +82,7 @@ public partial class SettingsViewModel : ObservableObject
         ConfirmBeforeImport = cfg.ConfirmBeforeImport;
         DefaultAccountId              = cfg.DefaultAccountId;
         IgnoreSslCertificateValidation = cfg.IgnoreSslCertificateValidation;
+        ErrorIfDuplicateHash = cfg.ErrorIfDuplicateHash;
         DetectedFolder                 = FileWatcherService.DetectEdgeDownloadsFolder();
     }
 
@@ -95,6 +98,7 @@ public partial class SettingsViewModel : ObservableObject
             ConfirmBeforeImport = ConfirmBeforeImport,
             DefaultAccountId              = DefaultAccountId,
             IgnoreSslCertificateValidation = IgnoreSslCertificateValidation,
+            ErrorIfDuplicateHash = ErrorIfDuplicateHash,
         });
     }
 

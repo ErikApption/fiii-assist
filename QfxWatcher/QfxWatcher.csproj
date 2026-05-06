@@ -28,6 +28,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\QfxWatcher.Core\QfxWatcher.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Assets -->
     <Content Include="Assets\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -41,4 +41,10 @@ public class AppSettings
     /// When true, TLS/SSL certificate validation is bypassed for server requests.
     /// </summary>
     public bool IgnoreSslCertificateValidation { get; set; }
+
+    /// <summary>
+    /// When true, Firefly III will treat transactions with duplicate hashes as errors.
+    /// When false, duplicate transactions are silently ignored.
+    /// </summary>
+    public bool ErrorIfDuplicateHash { get; set; }
 }

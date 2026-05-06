@@ -16,6 +16,7 @@ public class SettingsService
     private const string KeyConfirmBeforeImport = "ConfirmBeforeImport";
     private const string KeyDefaultAccountId    = "DefaultAccountId";
     private const string KeyIgnoreSslValidation = "IgnoreSslValidation";
+    private const string KeyErrorIfDuplicateHash = "ErrorIfDuplicateHash";
 
     // In-memory fallback used when LocalSettings is not available.
     private readonly Dictionary<string, object?> _fallback = [];
@@ -40,6 +41,7 @@ public class SettingsService
             ConfirmBeforeImport         = GetBool(KeyConfirmBeforeImport, defaultValue: true),
             DefaultAccountId            = GetString(KeyDefaultAccountId),
             IgnoreSslCertificateValidation = GetBool(KeyIgnoreSslValidation),
+            ErrorIfDuplicateHash = GetBool(KeyErrorIfDuplicateHash),
         };
     }
 
@@ -52,6 +54,7 @@ public class SettingsService
         SetValue(KeyConfirmBeforeImport, settings.ConfirmBeforeImport);
         SetValue(KeyDefaultAccountId,    settings.DefaultAccountId);
         SetValue(KeyIgnoreSslValidation, settings.IgnoreSslCertificateValidation);
+        SetValue(KeyErrorIfDuplicateHash, settings.ErrorIfDuplicateHash);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

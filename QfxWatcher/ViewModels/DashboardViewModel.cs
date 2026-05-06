@@ -14,7 +14,7 @@ public partial class DashboardViewModel : ObservableObject
 {
     private readonly SettingsService      _settings;
     private readonly FileWatcherService   _watcher;
-    private readonly ActualBudgetService  _budget;
+    private readonly FireflyIIIService  _budget;
 
     [ObservableProperty]
     private string _statusMessage = "Not started.";
@@ -41,7 +41,7 @@ public partial class DashboardViewModel : ObservableObject
     public DashboardViewModel(
         SettingsService     settings,
         FileWatcherService  watcher,
-        ActualBudgetService budget)
+        FireflyIIIService budget)
     {
         _settings = settings;
         _watcher  = watcher;
@@ -137,7 +137,7 @@ public partial class DashboardViewModel : ObservableObject
 
             int added = 0;
             if (!string.IsNullOrWhiteSpace(targetId) && IsConnected)
-                added = await _budget.ImportTransactionsAsync(targetId, transactions);
+                added = await _budget.ImportTransactionsAsync(targetId, transactions, cfg.ErrorIfDuplicateHash);
 
             var entry = new ImportLogEntry
             {

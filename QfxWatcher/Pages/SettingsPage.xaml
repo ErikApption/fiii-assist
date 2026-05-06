@@ -117,6 +117,10 @@
                         Header="Archive QFX file after successful import"
                         IsOn="{x:Bind ViewModel.ArchiveAfterImport, Mode=TwoWay}" />
 
+                    <ToggleSwitch
+                        Header="Error if duplicate transaction detected"
+                        IsOn="{x:Bind ViewModel.ErrorIfDuplicateHash, Mode=TwoWay}" />
+
                 </StackPanel>
             </Expander>
 
