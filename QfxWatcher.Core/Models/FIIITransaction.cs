@@ -3,7 +3,7 @@ namespace QfxWatcher.Models;
 /// <summary>
 /// A single financial transaction parsed from a QFX/OFX file.
 /// </summary>
-public class QfxTransaction
+public class FIIITransaction
 {
     /// <summary>Unique transaction identifier from the bank.</summary>
     public string FitId { get; set; } = string.Empty;

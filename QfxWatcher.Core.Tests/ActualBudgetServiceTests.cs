@@ -9,12 +9,12 @@ namespace QfxWatcher.Core.Tests;
 public class ActualBudgetServiceTests
 {
     [Fact]
-    public async Task GetAccountsAsync_BeforeLogin_ThrowsInvalidOperationException()
+    public async Task GetAccountsAsync_BeforeLogin_ThrowsHttpRequestException()
     {
         using var sut = new FireflyIIIService();
         sut.Configure("http://localhost:12345");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.GetAccountsAsync());
+        await Assert.ThrowsAsync<System.Net.Http.HttpRequestException>(() => sut.GetAccountsAsync());
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class ActualBudgetServiceTests
 
         var added = await sut.ImportTransactionsAsync("acc-1",
         [
-            new QfxTransaction
+            new FIIITransaction
             {
                 FitId = "fit-1",
                 Date = new DateOnly(2025, 5, 2),

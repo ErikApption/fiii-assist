@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace QfxWatcher.Services;
 
 /// <summary>
-/// Parses QFX (OFX) files and returns a list of <see cref="QfxTransaction"/> objects.
+/// Parses QFX (OFX) files and returns a list of <see cref="FIIITransaction"/> objects.
 /// Supports both legacy SGML-style OFX 1.x and XML-based OFX 2.x / QFX files.
 /// </summary>
 public static class QfxParserService
@@ -16,7 +16,7 @@ public static class QfxParserService
     /// <summary>
     /// Parses the given file path and returns all transactions found.
     /// </summary>
-    public static IReadOnlyList<QfxTransaction> ParseFile(string filePath)
+    public static IReadOnlyList<FIIITransaction> ParseFile(string filePath)
     {
         var text = File.ReadAllText(filePath);
         return Parse(text);
@@ -25,7 +25,7 @@ public static class QfxParserService
     /// <summary>
     /// Parses raw OFX/QFX content.
     /// </summary>
-    public static IReadOnlyList<QfxTransaction> Parse(string content)
+    public static IReadOnlyList<FIIITransaction> Parse(string content)
     {
         // Detect XML vs SGML
         var trimmed = content.TrimStart();
@@ -40,14 +40,14 @@ public static class QfxParserService
 
     // ── SGML (OFX 1.x / QFX) parser ─────────────────────────────────────────
 
-    private static IReadOnlyList<QfxTransaction> ParseSgml(string content)
+    private static IReadOnlyList<FIIITransaction> ParseSgml(string content)
     {
         // Strip header lines (everything before <OFX>)
         var ofxStart = content.IndexOf("<OFX>", StringComparison.OrdinalIgnoreCase);
         if (ofxStart >= 0)
             content = content[ofxStart..];
 
-        var transactions = new List<QfxTransaction>();
+        var transactions = new List<FIIITransaction>();
 
         // Find all <STMTTRN>…</STMTTRN> blocks
         var blockPattern = new Regex(
@@ -57,7 +57,7 @@ public static class QfxParserService
         foreach (Match block in blockPattern.Matches(content))
         {
             var body = block.Groups[1].Value;
-            transactions.Add(new QfxTransaction
+            transactions.Add(new FIIITransaction
             {
                 FitId           = ReadSgmlTag(body, "FITID"),
                 TransactionType = ReadSgmlTag(body, "TRNTYPE"),
@@ -81,9 +81,9 @@ public static class QfxParserService
 
     // ── XML (OFX 2.x) parser ─────────────────────────────────────────────────
 
-    private static IReadOnlyList<QfxTransaction> ParseXml(string content)
+    private static IReadOnlyList<FIIITransaction> ParseXml(string content)
     {
-        var transactions = new List<QfxTransaction>();
+        var transactions = new List<FIIITransaction>();
 
         // Strip XML declaration to avoid encoding issues
         var xmlStart = content.IndexOf("<OFX>", StringComparison.OrdinalIgnoreCase);
@@ -98,7 +98,7 @@ public static class QfxParserService
         foreach (Match block in blockPattern.Matches(content))
         {
             var body = block.Groups[1].Value;
-            transactions.Add(new QfxTransaction
+            transactions.Add(new FIIITransaction
             {
                 FitId           = ReadXmlTag(body, "FITID"),
                 TransactionType = ReadXmlTag(body, "TRNTYPE"),

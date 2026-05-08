@@ -39,7 +39,7 @@ public sealed partial class DashboardPage : Page
     private async Task ShowImportDialogAsync(string filePath)
     {
         // Parse the file first so we can show a transaction count
-        IReadOnlyList<QfxTransaction> transactions;
+        IReadOnlyList<FIIITransaction> transactions;
         try
         {
             transactions = Services.QfxParserService.ParseFile(filePath);
