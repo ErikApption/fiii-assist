@@ -45,10 +45,10 @@ public sealed class ColumnValue
         if (MappedValue != 0)
             return MappedValue;
 
-        var converterName = RoleDefinitions.GetConverterName(Role);
-        if (string.IsNullOrEmpty(converterName))
+        var converterClass = RoleDefinitions.GetConverterName(Role);
+        if (string.IsNullOrEmpty(converterClass))
             return Value;
 
-        return ConverterService.Convert(converterName + "Converter", Value, Configuration);
+        return ConverterService.Convert(converterClass, Value, Configuration);
     }
 }

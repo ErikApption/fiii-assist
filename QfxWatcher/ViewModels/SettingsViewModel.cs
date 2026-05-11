@@ -12,12 +12,13 @@ public partial class SettingsViewModel : ObservableObject
     private readonly SettingsService     _settings;
     private readonly FireflyIIIService _budget;
     private readonly FileWatcherService  _watcher;
+    private bool _isLoading;
 
     [ObservableProperty]
     private string _serverUrl = string.Empty;
 
     [ObservableProperty]
-    private string _serverPassword = string.Empty;
+    private string _serverToken = string.Empty;
 
     [ObservableProperty]
     private string _watchFolder = string.Empty;
@@ -46,6 +47,10 @@ public partial class SettingsViewModel : ObservableObject
     private bool _isTestingConnection;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsNotConnected))]
+    private bool _isConnected;
+
+    [ObservableProperty]
     private string _detectedFolder = string.Empty;
 
     public bool CanTestConnection => !IsTestingConnection;
@@ -53,6 +58,8 @@ public partial class SettingsViewModel : ObservableObject
     public bool HasTestConnectionMessage => !string.IsNullOrWhiteSpace(TestConnectionMessage);
 
     public bool HasAccounts => Accounts.Count > 0;
+
+    public bool IsNotConnected => !IsConnected;
 
     public ObservableCollection<AccountSingle> Accounts { get; } = [];
     public SettingsViewModel(
@@ -67,23 +74,48 @@ public partial class SettingsViewModel : ObservableObject
         Accounts.CollectionChanged += OnAccountsCollectionChanged;
 
         Load();
+
+        // Auto-persist whenever a user-editable property changes
+        PropertyChanged += (_, e) =>
+        {
+            if (!_isLoading && IsPersistedProperty(e.PropertyName))
+                Save();
+        };
     }
+
+    private static bool IsPersistedProperty(string? name) => name is
+        nameof(ServerUrl) or
+        nameof(ServerToken) or
+        nameof(WatchFolder) or
+        nameof(ArchiveAfterImport) or
+        nameof(ConfirmBeforeImport) or
+        nameof(DefaultAccountId) or
+        nameof(IgnoreSslCertificateValidation) or
+        nameof(ErrorIfDuplicateHash);
 
     // ── Commands ──────────────────────────────────────────────────────────────
 
     [RelayCommand]
     public void Load()
     {
-        var cfg = _settings.Load();
-        ServerUrl           = cfg.ServerUrl;
-        ServerPassword      = cfg.ServerPassword;
-        WatchFolder         = cfg.WatchFolder;
-        ArchiveAfterImport  = cfg.ArchiveAfterImport;
-        ConfirmBeforeImport = cfg.ConfirmBeforeImport;
-        DefaultAccountId              = cfg.DefaultAccountId;
-        IgnoreSslCertificateValidation = cfg.IgnoreSslCertificateValidation;
-        ErrorIfDuplicateHash = cfg.ErrorIfDuplicateHash;
-        DetectedFolder                 = FileWatcherService.DetectEdgeDownloadsFolder();
+        _isLoading = true;
+        try
+        {
+            var cfg = _settings.Load();
+            ServerUrl           = cfg.ServerUrl;
+            ServerToken         = cfg.ServerToken;
+            WatchFolder         = cfg.WatchFolder;
+            ArchiveAfterImport  = cfg.ArchiveAfterImport;
+            ConfirmBeforeImport = cfg.ConfirmBeforeImport;
+            DefaultAccountId              = cfg.DefaultAccountId;
+            IgnoreSslCertificateValidation = cfg.IgnoreSslCertificateValidation;
+            ErrorIfDuplicateHash = cfg.ErrorIfDuplicateHash;
+            DetectedFolder                 = FileWatcherService.DetectEdgeDownloadsFolder();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
     }
 
     [RelayCommand]
@@ -92,7 +124,7 @@ public partial class SettingsViewModel : ObservableObject
         _settings.Save(new AppSettings
         {
             ServerUrl           = ServerUrl.Trim(),
-            ServerPassword      = ServerPassword,
+            ServerToken         = ServerToken,
             WatchFolder         = WatchFolder.Trim(),
             ArchiveAfterImport  = ArchiveAfterImport,
             ConfirmBeforeImport = ConfirmBeforeImport,
@@ -111,18 +143,25 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(ServerToken))
+        {
+            TestConnectionMessage = "Please enter a Personal Access Token first.";
+            return;
+        }
+
         IsTestingConnection   = true;
+        IsConnected           = false;
         TestConnectionMessage = "Connecting…";
         Accounts.Clear();
 
         try
         {
             _budget.Configure(ServerUrl.Trim(), IgnoreSslCertificateValidation);
-            var ok = await _budget.LoginAsync(ServerPassword);
+            var ok = await _budget.LoginAsync(ServerToken);
 
             if (!ok)
             {
-                TestConnectionMessage = "❌ Authentication failed. Check your password.";
+                TestConnectionMessage = "❌ Authentication failed. Check your token.";
                 return;
             }
 
@@ -130,6 +169,7 @@ public partial class SettingsViewModel : ObservableObject
             foreach (var a in accounts)
                 Accounts.Add(a);
 
+            IsConnected = true;
             TestConnectionMessage = accounts.Count > 0
                 ? $"✔ Connected. Found {accounts.Count} account(s)."
                 : "✔ Connected, but no accounts found.";

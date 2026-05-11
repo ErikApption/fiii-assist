@@ -10,7 +10,7 @@ namespace QfxWatcher.Services;
 public class SettingsService
 {
     private const string KeyServerUrl          = "ServerUrl";
-    private const string KeyServerPassword     = "ServerPassword";
+    private const string KeyServerToken        = "ServerToken";
     private const string KeyWatchFolder        = "WatchFolder";
     private const string KeyArchiveAfterImport = "ArchiveAfterImport";
     private const string KeyConfirmBeforeImport = "ConfirmBeforeImport";
@@ -35,7 +35,7 @@ public class SettingsService
         return new AppSettings
         {
             ServerUrl           = GetString(KeyServerUrl),
-            ServerPassword      = GetString(KeyServerPassword),
+            ServerToken         = GetString(KeyServerToken),
             WatchFolder         = GetString(KeyWatchFolder),
             ArchiveAfterImport  = GetBool(KeyArchiveAfterImport, defaultValue: true),
             ConfirmBeforeImport         = GetBool(KeyConfirmBeforeImport, defaultValue: true),
@@ -48,7 +48,7 @@ public class SettingsService
     public void Save(AppSettings settings)
     {
         SetValue(KeyServerUrl,           settings.ServerUrl);
-        SetValue(KeyServerPassword,      settings.ServerPassword);
+        SetValue(KeyServerToken,         settings.ServerToken);
         SetValue(KeyWatchFolder,         settings.WatchFolder);
         SetValue(KeyArchiveAfterImport,  settings.ArchiveAfterImport);
         SetValue(KeyConfirmBeforeImport, settings.ConfirmBeforeImport);

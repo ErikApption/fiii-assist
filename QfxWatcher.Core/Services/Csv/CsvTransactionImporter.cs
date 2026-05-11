@@ -5,6 +5,10 @@ namespace QfxWatcher.Services.Csv;
 
 /// <summary>
 /// Imports finalized CSV transactions into Firefly III via the generated API client.
+/// Follows the same account resolution logic as the PHP data-importer:
+/// - For withdrawals: source must be an asset account (by ID), destination is created by name if missing.
+/// - For deposits: destination must be an asset account (by ID), source is created by name if missing.
+/// - Firefly III auto-creates expense/revenue accounts when only a name is submitted.
 /// </summary>
 public sealed class CsvTransactionImporter
 {
@@ -27,52 +31,7 @@ public sealed class CsvTransactionImporter
 
         foreach (var tx in transactions)
         {
-            var split = new TransactionSplitStore
-            {
-                Type = tx.Type switch
-                {
-                    "deposit" => TransactionTypeProperty.Deposit,
-                    "transfer" => TransactionTypeProperty.Transfer,
-                    _ => TransactionTypeProperty.Withdrawal,
-                },
-                Date = DateTime.TryParse(tx.Date, out var d) ? d : DateTime.UtcNow,
-                Amount = tx.Amount,
-                Description = tx.Description,
-                Source_id = tx.SourceId,
-                Source_name = tx.SourceName,
-                Destination_id = tx.DestinationId,
-                Destination_name = tx.DestinationName,
-                Currency_id = tx.CurrencyId,
-                Currency_code = tx.CurrencyCode,
-                Foreign_amount = tx.ForeignAmount,
-                Foreign_currency_id = tx.ForeignCurrencyId,
-                Foreign_currency_code = tx.ForeignCurrencyCode,
-                Budget_id = tx.BudgetId,
-                Budget_name = tx.BudgetName,
-                Category_id = tx.CategoryId,
-                Category_name = tx.CategoryName,
-                Bill_id = tx.BillId,
-                Bill_name = tx.BillName,
-                Tags = tx.Tags,
-                Notes = tx.Notes,
-                External_id = tx.ExternalId,
-                External_url = tx.ExternalUrl,
-                Internal_reference = tx.InternalReference,
-                Interest_date = ParseNullableDate(tx.InterestDate),
-                Book_date = ParseNullableDate(tx.BookDate),
-                Process_date = ParseNullableDate(tx.ProcessDate),
-                Due_date = ParseNullableDate(tx.DueDate),
-                Payment_date = ParseNullableDate(tx.PaymentDate),
-                Invoice_date = ParseNullableDate(tx.InvoiceDate),
-                Sepa_cc = tx.SepaCc,
-                Sepa_ct_op = tx.SepaCtOp,
-                Sepa_ct_id = tx.SepaCtId,
-                Sepa_db = tx.SepaDb,
-                Sepa_country = tx.SepaCountry,
-                Sepa_ep = tx.SepaEp,
-                Sepa_ci = tx.SepaCi,
-                Sepa_batch_id = tx.SepaBatchId,
-            };
+            var split = BuildTransactionSplit(tx);
 
             var payload = new TransactionStore
             {
@@ -87,6 +46,95 @@ public sealed class CsvTransactionImporter
         }
 
         return added;
+    }
+
+    /// <summary>
+    /// Builds a TransactionSplitStore following the same account creation logic as the PHP importer:
+    /// - Withdrawals: source is the asset account (by ID); if no destination info exists, use description as name
+    ///   so Firefly III auto-creates the expense account.
+    /// - Deposits: destination is the asset account (by ID); if no source info exists, use description as name
+    ///   so Firefly III auto-creates the revenue account.
+    /// - Transfers: both source and destination should have IDs.
+    /// </summary>
+    private static TransactionSplitStore BuildTransactionSplit(FireflyTransaction tx)
+    {
+        var type = tx.Type switch
+        {
+            "deposit" => TransactionTypeProperty.Deposit,
+            "transfer" => TransactionTypeProperty.Transfer,
+            _ => TransactionTypeProperty.Withdrawal,
+        };
+
+        // Resolve source and destination following the PHP Accounts task logic:
+        // When an account has no ID, name, or IBAN, fall back to the description
+        // so Firefly III can auto-create the expense/revenue account.
+        var sourceId = tx.SourceId;
+        var sourceName = tx.SourceName;
+        var destinationId = tx.DestinationId;
+        var destinationName = tx.DestinationName;
+
+        if (type == TransactionTypeProperty.Withdrawal)
+        {
+            // Destination is the expense account — if nothing is set, use description
+            if (string.IsNullOrWhiteSpace(destinationId)
+                && string.IsNullOrWhiteSpace(destinationName)
+                && string.IsNullOrWhiteSpace(tx.DestinationIban))
+            {
+                destinationName = tx.Description;
+            }
+        }
+        else if (type == TransactionTypeProperty.Deposit)
+        {
+            // Source is the revenue account — if nothing is set, use description
+            if (string.IsNullOrWhiteSpace(sourceId)
+                && string.IsNullOrWhiteSpace(sourceName)
+                && string.IsNullOrWhiteSpace(tx.SourceIban))
+            {
+                sourceName = tx.Description;
+            }
+        }
+
+        return new TransactionSplitStore
+        {
+            Type = type,
+            Date = DateTime.TryParse(tx.Date, out var d) ? d : DateTime.UtcNow,
+            Amount = tx.Amount,
+            Description = tx.Description,
+            Source_id = sourceId,
+            Source_name = sourceName,
+            Destination_id = destinationId,
+            Destination_name = destinationName,
+            Currency_id = tx.CurrencyId,
+            Currency_code = tx.CurrencyCode,
+            Foreign_amount = tx.ForeignAmount,
+            Foreign_currency_id = tx.ForeignCurrencyId,
+            Foreign_currency_code = tx.ForeignCurrencyCode,
+            Budget_id = tx.BudgetId,
+            Budget_name = tx.BudgetName,
+            Category_id = tx.CategoryId,
+            Category_name = tx.CategoryName,
+            Bill_id = tx.BillId,
+            Bill_name = tx.BillName,
+            Tags = tx.Tags,
+            Notes = tx.Notes,
+            External_id = tx.ExternalId,
+            External_url = tx.ExternalUrl,
+            Internal_reference = tx.InternalReference,
+            Interest_date = ParseNullableDate(tx.InterestDate),
+            Book_date = ParseNullableDate(tx.BookDate),
+            Process_date = ParseNullableDate(tx.ProcessDate),
+            Due_date = ParseNullableDate(tx.DueDate),
+            Payment_date = ParseNullableDate(tx.PaymentDate),
+            Invoice_date = ParseNullableDate(tx.InvoiceDate),
+            Sepa_cc = tx.SepaCc,
+            Sepa_ct_op = tx.SepaCtOp,
+            Sepa_ct_id = tx.SepaCtId,
+            Sepa_db = tx.SepaDb,
+            Sepa_country = tx.SepaCountry,
+            Sepa_ep = tx.SepaEp,
+            Sepa_ci = tx.SepaCi,
+            Sepa_batch_id = tx.SepaBatchId,
+        };
     }
 
     private static DateTimeOffset? ParseNullableDate(string? value)

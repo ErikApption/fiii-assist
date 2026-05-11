@@ -8,7 +8,7 @@ namespace QfxWatcher.ViewModels;
 
 /// <summary>
 /// ViewModel for the Dashboard page.  Owns the FileWatcher and coordinates
-/// detecting QFX files with calling the Actual Budget service.
+/// detecting QFX files with calling the Firefly III service.
 /// </summary>
 public partial class DashboardViewModel : ObservableObject
 {
@@ -32,6 +32,11 @@ public partial class DashboardViewModel : ObservableObject
     public ObservableCollection<ImportLogEntry> LogEntries { get; } = [];
 
     /// <summary>
+    /// The Import Wizard ViewModel exposed for data-binding by the DashboardPage.
+    /// </summary>
+    public ImportWizardViewModel ImportWizard { get; }
+
+    /// <summary>
     /// Raised when a QFX file is detected and the ViewModel needs the
     /// View to show the import confirmation dialog.
     /// The string argument is the full file path.
@@ -41,13 +46,16 @@ public partial class DashboardViewModel : ObservableObject
     public DashboardViewModel(
         SettingsService     settings,
         FileWatcherService  watcher,
-        FireflyIIIService budget)
+        FireflyIIIService budget,
+        ImportWizardViewModel importWizard)
     {
         _settings = settings;
         _watcher  = watcher;
         _budget   = budget;
+        ImportWizard = importWizard;
 
         _watcher.QfxFileDetected += OnQfxFileDetected;
+        ImportWizard.ImportCompleted += OnImportWizardCompleted;
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
@@ -74,7 +82,7 @@ public partial class DashboardViewModel : ObservableObject
             StatusMessage = $"Error starting watcher: {ex.Message}";
         }
 
-        // Try to connect to Actual Budget
+        // Try to connect to Firefly III
         await TryConnectAsync(cfg);
     }
 
@@ -91,22 +99,22 @@ public partial class DashboardViewModel : ObservableObject
     private async Task TryConnectAsync(AppSettings cfg)
     {
         if (string.IsNullOrWhiteSpace(cfg.ServerUrl) ||
-            string.IsNullOrWhiteSpace(cfg.ServerPassword))
+            string.IsNullOrWhiteSpace(cfg.ServerToken))
         {
             IsConnected   = false;
             StatusMessage = IsWatching
-                ? $"Watching: {WatchedFolder} (Actual Budget not configured)"
-                : "Actual Budget not configured.";
+                ? $"Watching: {WatchedFolder} (Firefly III not configured)"
+                : "Firefly III not configured.";
             return;
         }
 
         try
         {
             _budget.Configure(cfg.ServerUrl, cfg.IgnoreSslCertificateValidation);
-            IsConnected  = await _budget.LoginAsync(cfg.ServerPassword);
+            IsConnected  = await _budget.LoginAsync(cfg.ServerToken);
             StatusMessage = IsConnected
-                ? $"Watching: {WatchedFolder} | Connected to Actual Budget"
-                : $"Watching: {WatchedFolder} | Failed to connect to Actual Budget";
+                ? $"Watching: {WatchedFolder} | Connected to Firefly III"
+                : $"Watching: {WatchedFolder} | Failed to connect to Firefly III";
         }
         catch (Exception ex)
         {
@@ -119,6 +127,11 @@ public partial class DashboardViewModel : ObservableObject
     {
         // Raise on UI thread via dispatcher – the View handles the dialog
         ImportRequested?.Invoke(this, filePath);
+    }
+
+    private void OnImportWizardCompleted(object? sender, ImportLogEntry entry)
+    {
+        LogEntries.Insert(0, entry);
     }
 
     /// <summary>

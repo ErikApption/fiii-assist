@@ -9,6 +9,7 @@ public static class ConverterService
 
     /// <summary>
     /// Convert a value using the named converter class.
+    /// Accepts either the full class name (e.g. "AmountConverter") or the short name (e.g. "Amount").
     /// Returns the typed result from the converter.
     /// </summary>
     public static object? Convert(string className, string? value, string? configuration = null)
@@ -17,7 +18,11 @@ public static class ConverterService
             return value;
 
         if (!ConverterTypes.TryGetValue(className, out var type))
-            throw new InvalidOperationException($"No such converter: \"{className}\"");
+        {
+            // Try with "Converter" suffix for backward compatibility
+            if (!ConverterTypes.TryGetValue(className + "Converter", out type))
+                throw new InvalidOperationException($"No such converter: \"{className}\"");
+        }
 
         var converter = Activator.CreateInstance(type)!;
 
@@ -44,9 +49,10 @@ public static class ConverterService
 
     /// <summary>
     /// Check if a converter class exists by name.
+    /// Accepts either the full class name or the short name.
     /// </summary>
     public static bool Exists(string className)
-        => ConverterTypes.ContainsKey(className);
+        => ConverterTypes.ContainsKey(className) || ConverterTypes.ContainsKey(className + "Converter");
 
     private static Dictionary<string, Type> BuildConverterMap()
     {

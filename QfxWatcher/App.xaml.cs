@@ -11,16 +11,19 @@ public partial class App : Application
 {
     // Simple manual DI – avoids pulling in a full DI container
     internal static SettingsService     SettingsService     { get; } = new();
-    internal static FireflyIIIService ActualBudgetService { get; } = new();
+    internal static FireflyIIIService FireflyService { get; } = new();
     internal static FileWatcherService  FileWatcherService  { get; } = new();
 
+    internal static ImportWizardViewModel ImportWizardViewModel { get; } =
+        new(FireflyService, SettingsService);
+
     internal static DashboardViewModel DashboardViewModel { get; } =
-        new(SettingsService, FileWatcherService, ActualBudgetService);
+        new(SettingsService, FileWatcherService, FireflyService, ImportWizardViewModel);
 
     internal static SettingsViewModel SettingsViewModel { get; } =
-        new(SettingsService, ActualBudgetService, FileWatcherService);
+        new(SettingsService, FireflyService, FileWatcherService);
 
-    private MainWindow? _window;
+    internal static MainWindow? MainWindow { get; private set; }
 
     public App()
     {
@@ -29,7 +32,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _window = new MainWindow();
-        _window.Activate();
+        MainWindow = new MainWindow();
+        MainWindow.Activate();
     }
 }

@@ -6,14 +6,14 @@ namespace QfxWatcher.Models;
 public class AppSettings
 {
     /// <summary>
-    /// Base URL of the Actual Budget server, e.g. "http://localhost:5006".
+    /// Base URL of the Firefly III server, e.g. "https://firefly.example.com".
     /// </summary>
     public string ServerUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// Password for the Actual Budget server.
+    /// Personal Access Token for the Firefly III API.
     /// </summary>
-    public string ServerPassword { get; set; } = string.Empty;
+    public string ServerToken { get; set; } = string.Empty;
 
     /// <summary>
     /// Optional: override the watched folder path.
@@ -33,7 +33,7 @@ public class AppSettings
     public bool ConfirmBeforeImport { get; set; } = true;
 
     /// <summary>
-    /// Default Actual Budget account ID to import into (optional).
+    /// Default Firefly III asset account ID to import into (optional).
     /// </summary>
     public string DefaultAccountId { get; set; } = string.Empty;
 

@@ -54,7 +54,7 @@ public sealed partial class DashboardPage : Page
         IReadOnlyList<AccountSingle> accounts = [];
         if (ViewModel.IsConnected)
         {
-            try { accounts = await App.ActualBudgetService.GetAccountsAsync(); }
+            try { accounts = await App.FireflyService.GetAccountsAsync(); }
             catch { /* will still allow import if account manually typed */ }
         }
 
@@ -107,7 +107,7 @@ public sealed partial class DashboardPage : Page
             panel.Children.Add(new InfoBar
             {
                 Severity  = InfoBarSeverity.Warning,
-                Title     = "Could not load accounts from Actual Budget.",
+                Title     = "Could not load accounts from Firefly III.",
                 IsOpen    = true,
                 IsClosable= false,
             });

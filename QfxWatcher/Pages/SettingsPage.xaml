@@ -11,11 +11,11 @@
 
             <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
 
-            <!-- ── Actual Budget Server ───────────────────────────────────── -->
+            <!-- ── Firefly III Server ─────────────────────────────────────── -->
             <Expander IsExpanded="True" HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch">
                 <Expander.Header>
-                    <TextBlock Text="Actual Budget Server"
+                    <TextBlock Text="Firefly III Server"
                                Style="{StaticResource SubtitleTextBlockStyle}" />
                 </Expander.Header>
 
@@ -24,15 +24,15 @@
                     <TextBox
                         x:Name="ServerUrlBox"
                         Header="Server URL"
-                        PlaceholderText="http://localhost:5006"
+                        PlaceholderText="https://firefly.example.com"
                         Text="{x:Bind ViewModel.ServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                         InputScope="Url" />
 
                     <PasswordBox
-                        x:Name="PasswordBox"
-                        Header="Password"
-                        PlaceholderText="Enter your Actual Budget password"
-                        Password="{x:Bind ViewModel.ServerPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        x:Name="TokenBox"
+                        Header="Personal Access Token"
+                        PlaceholderText="Enter your Firefly III Personal Access Token"
+                        Password="{x:Bind ViewModel.ServerToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                     <ToggleSwitch
                         Header="Ignore SSL certificate validation"
@@ -60,6 +60,7 @@
                         PlaceholderText="Select a default account (optional)"
                         HorizontalAlignment="Stretch"
                         ItemsSource="{x:Bind ViewModel.Accounts, Mode=OneWay}"
+                        DisplayMemberPath="Name"
                         SelectedValuePath="Id"
                         SelectedValue="{x:Bind ViewModel.DefaultAccountId, Mode=TwoWay}"
                         Visibility="{x:Bind ViewModel.HasAccounts, Mode=OneWay}" />
@@ -67,9 +68,10 @@
                 </StackPanel>
             </Expander>
 
-            <!-- ── Watch Folder ───────────────────────────────────────────── -->
+            <!-- ── Watch Folder (disabled until connected) ────────────────── -->
             <Expander IsExpanded="True" HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Stretch">
+                      HorizontalContentAlignment="Stretch"
+                      IsEnabled="{x:Bind ViewModel.IsConnected, Mode=OneWay}">
                 <Expander.Header>
                     <TextBlock Text="Watch Folder"
                                Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -99,9 +101,10 @@
                 </StackPanel>
             </Expander>
 
-            <!-- ── Import Behaviour ───────────────────────────────────────── -->
+            <!-- ── Import Behaviour (disabled until connected) ─────────────── -->
             <Expander IsExpanded="True" HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Stretch">
+                      HorizontalContentAlignment="Stretch"
+                      IsEnabled="{x:Bind ViewModel.IsConnected, Mode=OneWay}">
                 <Expander.Header>
                     <TextBlock Text="Import Behaviour"
                                Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -124,11 +127,13 @@
                 </StackPanel>
             </Expander>
 
-            <!-- ── Save ───────────────────────────────────────────────────── -->
-            <Button Content="Save Settings"
-                    Command="{x:Bind ViewModel.SaveCommand}"
-                    Style="{StaticResource AccentButtonStyle}"
-                    HorizontalAlignment="Right" />
+            <!-- ── Info banner when not connected ─────────────────────────── -->
+            <InfoBar
+                Severity="Warning"
+                Title="Connection required"
+                Message="Test your Firefly III connection above to enable all features."
+                IsOpen="{x:Bind ViewModel.IsNotConnected, Mode=OneWay}"
+                IsClosable="False" />
 
         </StackPanel>
     </ScrollViewer>
