@@ -13,6 +13,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QfxWatcher.FireflyIII", "Qf
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QfxWatcher.Tests", "QfxWatcher.Tests\QfxWatcher.Tests.csproj", "{7BA67DA8-3581-4BB7-8A38-37A77BEEF51B}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution", "Solution", "{83537AFB-1B5D-4FC6-80D7-93E00532FF3B}"
+	ProjectSection(SolutionItems) = preProject
+		Notes.md = Notes.md
+		README.md = README.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

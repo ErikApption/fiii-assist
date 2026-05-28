@@ -56,6 +56,15 @@ public partial class DashboardViewModel : ObservableObject
 
         _watcher.QfxFileDetected += OnQfxFileDetected;
         ImportWizard.ImportCompleted += OnImportWizardCompleted;
+
+        // Auto-start if the last connection test was successful
+        var cfg = _settings.Load();
+        if (cfg.LastConnectionSuccessful &&
+            !string.IsNullOrWhiteSpace(cfg.ServerUrl) &&
+            !string.IsNullOrWhiteSpace(cfg.ServerToken))
+        {
+            _ = StartWatchingAsync();
+        }
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────

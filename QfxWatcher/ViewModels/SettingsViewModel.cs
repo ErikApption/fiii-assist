@@ -39,6 +39,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _errorIfDuplicateHash;
 
     [ObservableProperty]
+    private bool _lastConnectionSuccessful;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTestConnectionMessage))]
     private string _testConnectionMessage = string.Empty;
 
@@ -91,7 +94,8 @@ public partial class SettingsViewModel : ObservableObject
         nameof(ConfirmBeforeImport) or
         nameof(DefaultAccountId) or
         nameof(IgnoreSslCertificateValidation) or
-        nameof(ErrorIfDuplicateHash);
+        nameof(ErrorIfDuplicateHash) or
+        nameof(LastConnectionSuccessful);
 
     // ── Commands ──────────────────────────────────────────────────────────────
 
@@ -110,6 +114,7 @@ public partial class SettingsViewModel : ObservableObject
             DefaultAccountId              = cfg.DefaultAccountId;
             IgnoreSslCertificateValidation = cfg.IgnoreSslCertificateValidation;
             ErrorIfDuplicateHash = cfg.ErrorIfDuplicateHash;
+            LastConnectionSuccessful = cfg.LastConnectionSuccessful;
             DetectedFolder                 = FileWatcherService.DetectEdgeDownloadsFolder();
         }
         finally
@@ -131,6 +136,7 @@ public partial class SettingsViewModel : ObservableObject
             DefaultAccountId              = DefaultAccountId,
             IgnoreSslCertificateValidation = IgnoreSslCertificateValidation,
             ErrorIfDuplicateHash = ErrorIfDuplicateHash,
+            LastConnectionSuccessful = LastConnectionSuccessful,
         });
     }
 
@@ -162,6 +168,7 @@ public partial class SettingsViewModel : ObservableObject
             if (!ok)
             {
                 TestConnectionMessage = "❌ Authentication failed. Check your token.";
+                LastConnectionSuccessful = false;
                 return;
             }
 
@@ -170,12 +177,14 @@ public partial class SettingsViewModel : ObservableObject
                 Accounts.Add(a);
 
             IsConnected = true;
+            LastConnectionSuccessful = true;
             TestConnectionMessage = accounts.Count > 0
                 ? $"✔ Connected. Found {accounts.Count} account(s)."
                 : "✔ Connected, but no accounts found.";
         }
         catch (Exception ex)
         {
+            LastConnectionSuccessful = false;
             TestConnectionMessage = $"❌ Connection error: {ex.Message}";
         }
         finally

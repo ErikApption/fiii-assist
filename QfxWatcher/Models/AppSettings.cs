@@ -47,4 +47,10 @@ public class AppSettings
     /// When false, duplicate transactions are silently ignored.
     /// </summary>
     public bool ErrorIfDuplicateHash { get; set; }
+
+    /// <summary>
+    /// Persisted result of the last successful connection test.
+    /// When true, the app will auto-connect on startup using the saved credentials.
+    /// </summary>
+    public bool LastConnectionSuccessful { get; set; }
 }
