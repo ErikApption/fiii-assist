@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "QfxWatcher.Cli": {
+      "commandName": "Project",
+      "commandLineArgs": "  --db \"C:\\temp\\actual\\db.sqlite\" \r\n  --server \"http://homeserver.local:5080/\" \r\n",
+      "environmentVariables": {
+        "FIREFLY_III_TOKEN": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIwMTlkZjE3Yi1iZjM0LTczOTYtODdmNy1jMWRlYmZhMTExZTkiLCJqdGkiOiIyYjgzNTdiYTkwMWIzOGU0YzI2NTkxNThmYzUzNTA3NTcxMmEyODhjMzk0NjFmNDk1YjJhY2M4ODhiODYzN2Q1YzkzY2NhNjgzNjIzMjZjMCIsImlhdCI6MTc4MTMyODY3My40OTIwMTMsIm5iZiI6MTc4MTMyODY3My40OTIwMTcsImV4cCI6MTgxMjg2NDY3My4zNTI3NCwic3ViIjoiMSIsInNjb3BlcyI6W119.glXqCInKKD9Z6l7qOJUp2Jvhmtbp39mb8FxzZNR_WI75o6-N3otawkP64OzUz3RnwDCFkKrRDZQU0wqHN0_MoG08K02IJLjv9hmjaqz14SkX2fH1clbnD0ICzyxG_32R-LE6Ea1rzxAk6cbDRpa-sWQocPXU8i7L4QpBkGBO6wm6YZzmg02kgRL5bE04rsnuaOgtTCgrtX4-jWa7MiJt3qP7tVRJSs_V4nMvHMRKyJXQrvcTNs2twr-F4TmkrIYi62RJs9Y30LOXXROwh3LjAAkUi7VeQFa75ijU4ey6jfgkFpwCCzD3jIZJgK_ZZRJPj06XGPyZfPyjtn87eQeyoIP17SfoD1XbeGpKDpyaClcloloO0ewkIAAOi4Dfbr8r0wi7SVaAzKYU86hcasALZYM8SeUpswwr4fKpg6t-GsXbxkp5RoP1FyFGucXUQ-qoZICtBPkmQblZYJUFf1gNzU3t1CSwsG_9_YokyWbzLpeDP-gRe64yvbOq7DYWB4IQRw--S2_ty4VYQOl63y5GnhNLQL61P1EL6UgP4aWib6Thb80lQdmj3u8p_Z4HhvWGaqQYxF-oa_hUqpIhhSwxVyWikkxLQHbWgv1__ahzVeWviC9lnP3hPi2ZUfbwMvyg6wakaZpE9-vSg06Sb0es1RN8r8paIw9Y0jUCeOIiPXQ"
+      }
+    }
+  }
+}

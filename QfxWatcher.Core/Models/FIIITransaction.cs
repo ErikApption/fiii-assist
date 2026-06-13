@@ -42,4 +42,16 @@ public class FIIITransaction
     /// Actual Budget stores amounts as integers: $1.00 = 100, -$1.00 = -100.
     /// </summary>
     public int AmountMilliunits => (int)Math.Round(Amount * 100);
+
+    /// <summary>
+    /// Category name from the source system (e.g. Actual Budget).
+    /// Used to set the category on the Firefly III transaction.
+    /// </summary>
+    public string? CategoryName { get; set; }
+
+    /// <summary>
+    /// Additional notes/description separate from the Memo field.
+    /// When set, used as the Notes field on the Firefly III transaction split.
+    /// </summary>
+    public string? Notes { get; set; }
 }

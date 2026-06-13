@@ -21,6 +21,12 @@ public sealed class FireflyIIIService : IDisposable
     public FireflyIIIService() { }
 
     /// <summary>
+    /// Invoked when a transaction fails with a 422 validation error.
+    /// Parameters: the failing transaction and the response body.
+    /// </summary>
+    public Action<FIIITransaction, string>? OnTransactionError { get; set; }
+
+    /// <summary>
     /// Creates an instance backed by a pre-configured <see cref="Client"/>.
     /// The caller owns the HttpClient lifetime.
     /// </summary>
@@ -227,9 +233,10 @@ public sealed class FireflyIIIService : IDisposable
                 Destination_id = destinationId,
                 Source_name = sourceName,
                 Destination_name = destinationName,
-                Notes = string.IsNullOrWhiteSpace(tx.Memo) ? null : tx.Memo,
+                Notes = tx.Notes ?? (string.IsNullOrWhiteSpace(tx.Memo) ? null : tx.Memo),
                 External_id = string.IsNullOrWhiteSpace(tx.FitId) ? null : tx.FitId,
                 Internal_reference = accountId,
+                Category_name = string.IsNullOrWhiteSpace(tx.CategoryName) ? null : tx.CategoryName,
             };
 
             var payload = new TransactionStore
@@ -240,8 +247,15 @@ public sealed class FireflyIIIService : IDisposable
                 Transactions = [split],
             };
 
-            _ = await _client!.StoreTransactionAsync(null, payload);
-            added++;
+            try
+            {
+                _ = await _client!.StoreTransactionAsync(null, payload);
+                added++;
+            }
+            catch (ApiException ex) when (ex.StatusCode == 422)
+            {
+                OnTransactionError?.Invoke(tx, ex.Response ?? ex.Message);
+            }
         }
 
         return added;

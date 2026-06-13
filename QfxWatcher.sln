@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QfxWatcher.FireflyIII", "Qf
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QfxWatcher.Tests", "QfxWatcher.Tests\QfxWatcher.Tests.csproj", "{7BA67DA8-3581-4BB7-8A38-37A77BEEF51B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QfxWatcher.Cli", "QfxWatcher.Cli\QfxWatcher.Cli.csproj", "{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution", "Solution", "{83537AFB-1B5D-4FC6-80D7-93E00532FF3B}"
 	ProjectSection(SolutionItems) = preProject
 		Notes.md = Notes.md
@@ -89,6 +91,18 @@ Global
 		{7BA67DA8-3581-4BB7-8A38-37A77BEEF51B}.Release|x64.Build.0 = Release|Any CPU
 		{7BA67DA8-3581-4BB7-8A38-37A77BEEF51B}.Release|x86.ActiveCfg = Release|Any CPU
 		{7BA67DA8-3581-4BB7-8A38-37A77BEEF51B}.Release|x86.Build.0 = Release|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Debug|x64.Build.0 = Debug|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Debug|x86.Build.0 = Debug|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Release|x64.ActiveCfg = Release|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Release|x64.Build.0 = Release|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Release|x86.ActiveCfg = Release|Any CPU
+		{B3A1F2C4-D5E6-4789-ABCD-123456789ABC}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
