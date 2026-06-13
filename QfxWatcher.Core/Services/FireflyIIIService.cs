@@ -140,6 +140,39 @@ public sealed class FireflyIIIService : IDisposable
             .ToList();
     }
 
+    /// <summary>
+    /// Fetches all asset accounts and liability accounts from Firefly III.
+    /// Per data-importer rules, transfers can occur between asset accounts
+    /// or between asset accounts and liabilities.
+    /// </summary>
+    public async Task<IReadOnlyList<AccountSingle>> GetTransferableAccountsAsync()
+    {
+        EnsureConfigured();
+
+        var assetResponse = await _client!.ListAccountAsync(
+            x_Trace_Id: null,
+            limit: 200,
+            page: 1,
+            start: null,
+            end: null,
+            date: null,
+            type: AccountTypeFilter.Asset);
+
+        var liabilityResponse = await _client!.ListAccountAsync(
+            x_Trace_Id: null,
+            limit: 200,
+            page: 1,
+            start: null,
+            end: null,
+            date: null,
+            type: AccountTypeFilter.Liability);
+
+        var accounts = new List<AccountSingle>();
+        accounts.AddRange(assetResponse.Data.Select(a => new AccountSingle { Data = a }));
+        accounts.AddRange(liabilityResponse.Data.Select(a => new AccountSingle { Data = a }));
+        return accounts;
+    }
+
     public async Task<int> ImportTransactionsAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, bool errorIfDuplicateHash = false)
     {
         EnsureConfigured();
@@ -147,11 +180,12 @@ public sealed class FireflyIIIService : IDisposable
         if (string.IsNullOrWhiteSpace(accountId) || transactions.Count == 0)
             return 0;
 
-        // Pre-fetch accounts so we can match transfer targets by name
+        // Pre-fetch asset + liability accounts so we can match transfer targets by name,
+        // IBAN, or account number (per data-importer transfer detection rules)
         IReadOnlyList<AccountSingle> accounts;
         try
         {
-            accounts = await GetAccountsAsync();
+            accounts = await GetTransferableAccountsAsync();
         }
         catch
         {
@@ -216,7 +250,7 @@ public sealed class FireflyIIIService : IDisposable
     // ── Transfer / account resolution ─────────────────────────────────────────
 
     /// <summary>
-    /// Patterns used to extract an account name from the NAME field when Memo is "Transferred".
+    /// Patterns used to extract an account name from the NAME field when a transfer is detected.
     /// E.g. "Deposit from Savings", "Withdrawal to Chequing", "Transfer from TFSA".
     /// </summary>
     private static readonly Regex TransferNamePattern = new(
@@ -224,13 +258,46 @@ public sealed class FireflyIIIService : IDisposable
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
-    /// Resolves the transaction type and source/destination fields based on the Memo field.
+    /// Common memo patterns that indicate an inter-account transfer beyond just "Transferred".
+    /// Banks use varying terminology; these are the most common seen in Canadian/US OFX files.
+    /// </summary>
+    private static readonly Regex TransferMemoPattern = new(
+        @"^(?:Transferred|Online Transfer|Internet Transfer|e-Transfer|Interac Transfer|Internal Transfer|Transfer|TFR|Funds Transfer)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Determines whether a transaction should be treated as a transfer.
+    /// Uses multiple signals per the data-importer approach:
+    /// 1. OFX TRNTYPE == "XFER" (standard OFX transfer type)
+    /// 2. Memo matches known transfer patterns (like data-importer "opposing-name" role detection)
+    /// 3. BANKACCTTO/BANKACCTFROM account number present in the transaction
+    /// </summary>
+    private static bool IsTransferTransaction(FIIITransaction tx)
+    {
+        // Signal 1: OFX standard TRNTYPE for transfers
+        if (string.Equals(tx.TransactionType?.Trim(), "XFER", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Signal 2: Memo matches known transfer patterns
+        if (!string.IsNullOrWhiteSpace(tx.Memo) && TransferMemoPattern.IsMatch(tx.Memo.Trim()))
+            return true;
+
+        // Signal 3: Opposing account number is present (bank included BANKACCTTO/BANKACCTFROM)
+        if (!string.IsNullOrWhiteSpace(tx.OpposingAccountNumber))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Resolves the transaction type and source/destination fields.
     /// Follows the same conventions as firefly-iii/data-importer:
+    /// - Firefly III determines transaction type based on source and destination accounts.
+    ///   Both must be recognized as asset accounts or liabilities for it to become a Transfer.
     /// - Memo is treated as the opposing account name (like the "opposing-name" CSV role).
     /// - "To " and "From " prefixes are stripped from the opposing name.
-    /// - When Memo is "Transferred", the Name field is parsed to identify an existing account
-    ///   and the transaction becomes a Transfer (same as data-importer's Accounts task which
-    ///   detects transfers when both source and destination are asset accounts).
+    /// - Transfer detection uses TRNTYPE=XFER, Memo patterns, and BANKACCTTO account numbers.
+    /// - Account matching by account number/IBAN is the strongest signal (per data-importer docs).
     /// - When the opposing account name is empty, "(no name)" is used per EmptyAccounts convention.
     /// </summary>
     private static (TransactionTypeProperty type, string? sourceName, string? sourceId, string? destinationName, string? destinationId)
@@ -240,27 +307,54 @@ public sealed class FireflyIIIService : IDisposable
             IReadOnlyList<AccountSingle> accounts,
             bool isDeposit)
     {
-        // Check if this is an inter-account transfer (Memo == "Transferred")
-        if (string.Equals(tx.Memo?.Trim(), "Transferred", StringComparison.OrdinalIgnoreCase))
+        // Check if this transaction looks like an inter-account transfer
+        if (IsTransferTransaction(tx))
         {
-            var opposingAccountId = TryMatchAccountFromName(tx.Name, accounts);
-            if (opposingAccountId != null)
+            // Strategy 1: Match by account number from BANKACCTTO/BANKACCTFROM
+            // This is the strongest signal per data-importer docs ("IBAN and account numbers")
+            if (!string.IsNullOrWhiteSpace(tx.OpposingAccountNumber))
             {
-                // Both accounts are asset accounts → Transfer (same logic as data-importer Accounts task)
-                if (isDeposit)
+                var opposingAccountId = TryMatchAccountByNumber(tx.OpposingAccountNumber, accounts);
+                if (opposingAccountId != null)
                 {
-                    // Money coming in: source is the matched account, destination is our account
-                    return (TransactionTypeProperty.Transfer, null, opposingAccountId, null, accountId);
-                }
-                else
-                {
-                    // Money going out: source is our account, destination is the matched account
-                    return (TransactionTypeProperty.Transfer, null, accountId, null, opposingAccountId);
+                    if (isDeposit)
+                        return (TransactionTypeProperty.Transfer, null, opposingAccountId, null, accountId);
+                    else
+                        return (TransactionTypeProperty.Transfer, null, accountId, null, opposingAccountId);
                 }
             }
 
-            // Couldn't match an account by ID — try to extract a name from the pattern
-            // and submit it as a name so Firefly III can resolve or create it
+            // Strategy 2: Match by name extracted from the NAME field pattern
+            var opposingAccountIdByName = TryMatchAccountFromName(tx.Name, accounts);
+            if (opposingAccountIdByName != null)
+            {
+                // Both accounts are asset/liability accounts → Transfer
+                if (isDeposit)
+                    return (TransactionTypeProperty.Transfer, null, opposingAccountIdByName, null, accountId);
+                else
+                    return (TransactionTypeProperty.Transfer, null, accountId, null, opposingAccountIdByName);
+            }
+
+            // Strategy 3: Match by Memo content against account names
+            // Some banks put the opposing account name directly in the Memo field
+            if (!string.IsNullOrWhiteSpace(tx.Memo) && !TransferMemoPattern.IsMatch(tx.Memo.Trim()))
+            {
+                // Memo is not a generic transfer keyword — it might be an account name
+                var cleanedMemo = CleanAccountName(tx.Memo);
+                if (!string.IsNullOrWhiteSpace(cleanedMemo))
+                {
+                    var memoMatchId = TryMatchAccountByName(cleanedMemo, accounts);
+                    if (memoMatchId != null)
+                    {
+                        if (isDeposit)
+                            return (TransactionTypeProperty.Transfer, null, memoMatchId, null, accountId);
+                        else
+                            return (TransactionTypeProperty.Transfer, null, accountId, null, memoMatchId);
+                    }
+                }
+            }
+
+            // Strategy 4: Extract name from pattern and submit it so Firefly III can resolve/create
             var nameMatch = TransferNamePattern.Match(tx.Name ?? string.Empty);
             if (nameMatch.Success)
             {
@@ -269,6 +363,22 @@ public sealed class FireflyIIIService : IDisposable
                     return (TransactionTypeProperty.Transfer, extractedName, null, null, accountId);
                 else
                     return (TransactionTypeProperty.Transfer, null, accountId, extractedName, null);
+            }
+
+            // Strategy 5: TRNTYPE=XFER or account number present but couldn't match —
+            // still submit as Transfer with whatever info we have, let Firefly III resolve it
+            if (string.Equals(tx.TransactionType?.Trim(), "XFER", StringComparison.OrdinalIgnoreCase)
+                || !string.IsNullOrWhiteSpace(tx.OpposingAccountNumber))
+            {
+                // Use the opposing account number as the name hint for Firefly III
+                var hint = !string.IsNullOrWhiteSpace(tx.OpposingAccountNumber)
+                    ? tx.OpposingAccountNumber
+                    : CleanAccountName(tx.Memo) ?? "(no name)";
+
+                if (isDeposit)
+                    return (TransactionTypeProperty.Transfer, hint, null, null, accountId);
+                else
+                    return (TransactionTypeProperty.Transfer, null, accountId, hint, null);
             }
         }
 
@@ -285,6 +395,15 @@ public sealed class FireflyIIIService : IDisposable
         }
         else
         {
+            // ATM/cash withdrawals go to Firefly III's special "(cash)" destination account
+            // per Firefly III's cash tracking conventions (How to track cash).
+            var trnType = tx.TransactionType?.Trim();
+            if (string.Equals(trnType, "ATM", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trnType, "CASH", StringComparison.OrdinalIgnoreCase))
+            {
+                return (TransactionTypeProperty.Withdrawal, null, accountId, "(cash)", null);
+            }
+
             // Withdrawal: source is our asset account, destination is the opposing account (expense)
             return (TransactionTypeProperty.Withdrawal, null, accountId, opposingName, null);
         }
@@ -315,7 +434,60 @@ public sealed class FireflyIIIService : IDisposable
     }
 
     /// <summary>
-    /// Attempts to match an account from the Name field when Memo is "Transferred".
+    /// Attempts to match an account by its account number or IBAN.
+    /// Per data-importer docs: "If your file contains IBANs or account numbers,
+    /// definitely use them to link them to your asset accounts."
+    /// </summary>
+    private static string? TryMatchAccountByNumber(string accountNumber, IReadOnlyList<AccountSingle> accounts)
+    {
+        if (string.IsNullOrWhiteSpace(accountNumber) || accounts.Count == 0)
+            return null;
+
+        var trimmed = accountNumber.Trim();
+
+        // Try exact match on account_number field
+        var matched = accounts.FirstOrDefault(a =>
+            !string.IsNullOrWhiteSpace(a.Data?.Attributes?.Account_number) &&
+            string.Equals(a.Data.Attributes.Account_number.Trim(), trimmed, StringComparison.OrdinalIgnoreCase));
+
+        // Try IBAN match (some banks provide full or partial IBANs)
+        matched ??= accounts.FirstOrDefault(a =>
+            !string.IsNullOrWhiteSpace(a.Data?.Attributes?.Iban) &&
+            (string.Equals(a.Data.Attributes.Iban.Trim(), trimmed, StringComparison.OrdinalIgnoreCase) ||
+             a.Data.Attributes.Iban.Trim().EndsWith(trimmed, StringComparison.OrdinalIgnoreCase)));
+
+        // Try suffix match on account_number (some banks truncate or use last N digits)
+        matched ??= accounts.FirstOrDefault(a =>
+            !string.IsNullOrWhiteSpace(a.Data?.Attributes?.Account_number) &&
+            trimmed.Length >= 4 &&
+            a.Data.Attributes.Account_number.Trim().EndsWith(trimmed, StringComparison.OrdinalIgnoreCase));
+
+        return matched?.Data?.Id;
+    }
+
+    /// <summary>
+    /// Attempts to match an account by name (direct search against known accounts).
+    /// </summary>
+    private static string? TryMatchAccountByName(string name, IReadOnlyList<AccountSingle> accounts)
+    {
+        if (string.IsNullOrWhiteSpace(name) || accounts.Count == 0)
+            return null;
+
+        var trimmed = name.Trim();
+
+        // Exact match first (case-insensitive)
+        var matched = accounts.FirstOrDefault(a =>
+            string.Equals(a.Data?.Attributes?.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+
+        // Contains match as fallback (e.g. "Savings" matches "My Savings Account")
+        matched ??= accounts.FirstOrDefault(a =>
+            a.Data?.Attributes?.Name?.Contains(trimmed, StringComparison.OrdinalIgnoreCase) == true);
+
+        return matched?.Data?.Id;
+    }
+
+    /// <summary>
+    /// Attempts to match an account from the Name field by parsing transfer patterns.
     /// Parses patterns like "Deposit from Savings" and matches against known accounts.
     /// Returns the account ID if found, null otherwise.
     /// </summary>
@@ -329,16 +501,7 @@ public sealed class FireflyIIIService : IDisposable
             return null;
 
         var extractedName = match.Groups[1].Value.Trim();
-
-        // Try exact match first (case-insensitive)
-        var matched = accounts.FirstOrDefault(a =>
-            string.Equals(a.Data?.Attributes?.Name, extractedName, StringComparison.OrdinalIgnoreCase));
-
-        // Try contains match as fallback (e.g. "Savings" matches "My Savings Account")
-        matched ??= accounts.FirstOrDefault(a =>
-            a.Data?.Attributes?.Name?.Contains(extractedName, StringComparison.OrdinalIgnoreCase) == true);
-
-        return matched?.Data?.Id;
+        return TryMatchAccountByName(extractedName, accounts);
     }
 
     public void Dispose()

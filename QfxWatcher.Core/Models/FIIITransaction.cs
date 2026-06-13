@@ -23,8 +23,19 @@ public class FIIITransaction
     /// <summary>Optional memo / description.</summary>
     public string Memo { get; set; } = string.Empty;
 
-    /// <summary>OFX transaction type (DEBIT, CREDIT, etc.).</summary>
+    /// <summary>OFX transaction type (DEBIT, CREDIT, XFER, etc.).</summary>
     public string TransactionType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Account number of the opposing account extracted from BANKACCTTO/BANKACCTFROM
+    /// within the OFX transaction block. Used for transfer detection.
+    /// </summary>
+    public string OpposingAccountNumber { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Bank ID (routing number) of the opposing account extracted from BANKACCTTO/BANKACCTFROM.
+    /// </summary>
+    public string OpposingBankId { get; set; } = string.Empty;
 
     /// <summary>
     /// Amount converted to integer milliunits (cents × 10) as required by Actual Budget.

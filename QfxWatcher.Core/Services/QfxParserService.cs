@@ -57,14 +57,20 @@ public static class QfxParserService
         foreach (Match block in blockPattern.Matches(content))
         {
             var body = block.Groups[1].Value;
+
+            // Extract opposing account info from BANKACCTTO or BANKACCTFROM blocks
+            var (opposingAcctNum, opposingBankId) = ExtractOpposingAccountSgml(body);
+
             transactions.Add(new FIIITransaction
             {
-                FitId           = ReadSgmlTag(body, "FITID"),
-                TransactionType = ReadSgmlTag(body, "TRNTYPE"),
-                Date            = ParseOFXDate(ReadSgmlTag(body, "DTPOSTED")),
-                Amount          = ParseAmount(ReadSgmlTag(body, "TRNAMT")),
-                Name            = ReadSgmlTag(body, "NAME"),
-                Memo            = ReadSgmlTag(body, "MEMO"),
+                FitId                  = ReadSgmlTag(body, "FITID"),
+                TransactionType        = ReadSgmlTag(body, "TRNTYPE"),
+                Date                   = ParseOFXDate(ReadSgmlTag(body, "DTPOSTED")),
+                Amount                 = ParseAmount(ReadSgmlTag(body, "TRNAMT")),
+                Name                   = ReadSgmlTag(body, "NAME"),
+                Memo                   = ReadSgmlTag(body, "MEMO"),
+                OpposingAccountNumber  = opposingAcctNum,
+                OpposingBankId         = opposingBankId,
             });
         }
 
@@ -98,14 +104,20 @@ public static class QfxParserService
         foreach (Match block in blockPattern.Matches(content))
         {
             var body = block.Groups[1].Value;
+
+            // Extract opposing account info from BANKACCTTO or BANKACCTFROM blocks
+            var (opposingAcctNum, opposingBankId) = ExtractOpposingAccountXml(body);
+
             transactions.Add(new FIIITransaction
             {
-                FitId           = ReadXmlTag(body, "FITID"),
-                TransactionType = ReadXmlTag(body, "TRNTYPE"),
-                Date            = ParseOFXDate(ReadXmlTag(body, "DTPOSTED")),
-                Amount          = ParseAmount(ReadXmlTag(body, "TRNAMT")),
-                Name            = ReadXmlTag(body, "NAME"),
-                Memo            = ReadXmlTag(body, "MEMO"),
+                FitId                  = ReadXmlTag(body, "FITID"),
+                TransactionType        = ReadXmlTag(body, "TRNTYPE"),
+                Date                   = ParseOFXDate(ReadXmlTag(body, "DTPOSTED")),
+                Amount                 = ParseAmount(ReadXmlTag(body, "TRNAMT")),
+                Name                   = ReadXmlTag(body, "NAME"),
+                Memo                   = ReadXmlTag(body, "MEMO"),
+                OpposingAccountNumber  = opposingAcctNum,
+                OpposingBankId         = opposingBankId,
             });
         }
 
@@ -138,5 +150,85 @@ public static class QfxParserService
             System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture,
             out var value) ? value : 0m;
+    }
+
+    // ── Opposing account extraction ──────────────────────────────────────────
+
+    // Matches <BANKACCTTO>…</BANKACCTTO> or <BANKACCTFROM>…</BANKACCTFROM> blocks (SGML style)
+    private static readonly Regex SgmlBankAcctToPattern = new(
+        @"<BANKACCTTO>(.*?)(?:</BANKACCTTO>|<(?!ACCTID|BANKID|ACCTTYPE))",
+        RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex SgmlBankAcctFromPattern = new(
+        @"<BANKACCTFROM>(.*?)(?:</BANKACCTFROM>|<(?!ACCTID|BANKID|ACCTTYPE))",
+        RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Extracts the opposing account number and bank ID from BANKACCTTO/BANKACCTFROM
+    /// in an SGML-style OFX transaction block. Prefers BANKACCTTO (the destination
+    /// account for the transfer).
+    /// </summary>
+    private static (string accountNumber, string bankId) ExtractOpposingAccountSgml(string body)
+    {
+        // Try BANKACCTTO first (most common for transfers in OFX)
+        var match = SgmlBankAcctToPattern.Match(body);
+        if (match.Success)
+        {
+            var block = match.Groups[1].Value;
+            var acctId = ReadSgmlTag(block, "ACCTID");
+            var bankId = ReadSgmlTag(block, "BANKID");
+            if (!string.IsNullOrWhiteSpace(acctId))
+                return (acctId, bankId);
+        }
+
+        // Fallback to BANKACCTFROM (less common in transaction blocks, but some banks use it)
+        match = SgmlBankAcctFromPattern.Match(body);
+        if (match.Success)
+        {
+            var block = match.Groups[1].Value;
+            var acctId = ReadSgmlTag(block, "ACCTID");
+            var bankId = ReadSgmlTag(block, "BANKID");
+            if (!string.IsNullOrWhiteSpace(acctId))
+                return (acctId, bankId);
+        }
+
+        return (string.Empty, string.Empty);
+    }
+
+    /// <summary>
+    /// Extracts the opposing account number and bank ID from BANKACCTTO/BANKACCTFROM
+    /// in an XML-style OFX transaction block.
+    /// </summary>
+    private static (string accountNumber, string bankId) ExtractOpposingAccountXml(string body)
+    {
+        // Try BANKACCTTO first
+        var toPattern = new Regex(
+            @"<BANKACCTTO>(.*?)</BANKACCTTO>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        var match = toPattern.Match(body);
+        if (match.Success)
+        {
+            var block = match.Groups[1].Value;
+            var acctId = ReadXmlTag(block, "ACCTID");
+            var bankId = ReadXmlTag(block, "BANKID");
+            if (!string.IsNullOrWhiteSpace(acctId))
+                return (acctId, bankId);
+        }
+
+        // Fallback to BANKACCTFROM
+        var fromPattern = new Regex(
+            @"<BANKACCTFROM>(.*?)</BANKACCTFROM>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        match = fromPattern.Match(body);
+        if (match.Success)
+        {
+            var block = match.Groups[1].Value;
+            var acctId = ReadXmlTag(block, "ACCTID");
+            var bankId = ReadXmlTag(block, "BANKID");
+            if (!string.IsNullOrWhiteSpace(acctId))
+                return (acctId, bankId);
+        }
+
+        return (string.Empty, string.Empty);
     }
 }

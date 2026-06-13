@@ -21,6 +21,11 @@
                     Icon="Home"
                     IsEnabled="{x:Bind SettingsVM.IsConnected, Mode=OneWay}" />
                 <NavigationViewItem
+                    Content="Bank Accounts"
+                    Tag="BankAccounts"
+                    Icon="ContactInfo"
+                    IsEnabled="{x:Bind SettingsVM.IsConnected, Mode=OneWay}" />
+                <NavigationViewItem
                     Content="Settings"
                     Tag="Settings"
                     Icon="Setting" />

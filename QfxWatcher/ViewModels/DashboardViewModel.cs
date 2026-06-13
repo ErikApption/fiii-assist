@@ -57,14 +57,50 @@ public partial class DashboardViewModel : ObservableObject
         _watcher.QfxFileDetected += OnQfxFileDetected;
         ImportWizard.ImportCompleted += OnImportWizardCompleted;
 
-        // Auto-start if the last connection test was successful
+        // Auto-start the file watcher if the last connection test was successful.
+        // The actual Firefly III connection is established by SettingsViewModel's
+        // auto-connect on launch — we just start watching the folder here.
         var cfg = _settings.Load();
         if (cfg.LastConnectionSuccessful &&
             !string.IsNullOrWhiteSpace(cfg.ServerUrl) &&
             !string.IsNullOrWhiteSpace(cfg.ServerToken))
         {
-            _ = StartWatchingAsync();
+            AutoStartWatcher(cfg);
         }
+    }
+
+    /// <summary>
+    /// Starts the file watcher without attempting a Firefly III connection.
+    /// The connection is handled by SettingsViewModel's auto-connect on launch.
+    /// </summary>
+    private void AutoStartWatcher(AppSettings cfg)
+    {
+        var folder = string.IsNullOrWhiteSpace(cfg.WatchFolder)
+            ? FileWatcherService.DetectEdgeDownloadsFolder()
+            : cfg.WatchFolder;
+
+        try
+        {
+            _watcher.Start(folder);
+            WatchedFolder = folder;
+            IsWatching = true;
+            StatusMessage = $"Watching: {folder} (connecting…)";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error starting watcher: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Called after the SettingsViewModel successfully connects to Firefly III.
+    /// Updates the dashboard connection state.
+    /// </summary>
+    public void NotifyConnected()
+    {
+        IsConnected = true;
+        if (IsWatching)
+            StatusMessage = $"Watching: {WatchedFolder} | Connected to Firefly III";
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
