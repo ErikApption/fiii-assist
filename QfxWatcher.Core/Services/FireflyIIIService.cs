@@ -211,7 +211,7 @@ public sealed class FireflyIIIService : IDisposable
         return accounts;
     }
 
-    public async Task<int> ImportTransactionsAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, bool errorIfDuplicateHash = false)
+    public async Task<int> ImportTransactionsAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, bool errorIfDuplicateHash = false, bool skipDuplicatesByContent = false, bool useBatchMode = false)
     {
         EnsureConfigured();
 
@@ -230,7 +230,7 @@ public sealed class FireflyIIIService : IDisposable
             accounts = [];
         }
 
-        return await ImportTransactionsInternalAsync(accountId, transactions, accounts, errorIfDuplicateHash);
+        return await ImportTransactionsInternalAsync(accountId, transactions, accounts, errorIfDuplicateHash, skipDuplicatesByContent, useBatchMode);
     }
 
     /// <summary>
@@ -295,24 +295,115 @@ public sealed class FireflyIIIService : IDisposable
         return existingIds;
     }
 
-    private async Task<int> ImportTransactionsInternalAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, IReadOnlyList<AccountSingle> accounts, bool errorIfDuplicateHash)
+    /// <summary>
+    /// Fetches existing transactions for the given account within the date range and builds
+    /// content-based deduplication keys (date + absolute amount + source_id + destination_id).
+    /// Used to detect duplicates created by other tools that did not set external_id correctly.
+    /// </summary>
+    public async Task<HashSet<string>> GetExistingContentKeysAsync(string accountId, DateOnly startDate, DateOnly endDate)
+    {
+        EnsureConfigured();
+
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(accountId))
+            return keys;
+
+        try
+        {
+            var start = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            var end = new DateTimeOffset(endDate.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);
+
+            var page = 1;
+            const int pageSize = 100;
+
+            while (true)
+            {
+                var result = await _client!.ListTransactionByAccountAsync(
+                    x_Trace_Id: null,
+                    limit: pageSize,
+                    page: page,
+                    id: accountId,
+                    start: start,
+                    end: end,
+                    type: TransactionTypeFilter.All);
+
+                if (result?.Data == null || result.Data.Count == 0)
+                    break;
+
+                foreach (var txGroup in result.Data)
+                {
+                    if (txGroup?.Attributes?.Transactions == null)
+                        continue;
+
+                    foreach (var split in txGroup.Attributes.Transactions)
+                    {
+                        var date = DateOnly.FromDateTime(split.Date.DateTime);
+                        var amount = decimal.TryParse(split.Amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var a)
+                            ? Math.Abs(a)
+                            : 0m;
+
+                        keys.Add(BuildContentKey(date, amount, split.Source_id, split.Destination_id));
+                    }
+                }
+
+                if (result.Data.Count < pageSize)
+                    break;
+
+                page++;
+            }
+        }
+        catch
+        {
+            // If fetching fails, return empty set — other dedup mechanisms still apply
+        }
+
+        return keys;
+    }
+
+    /// <summary>
+    /// Builds a content-based deduplication key: date + absolute amount + source account ID + destination account ID.
+    /// </summary>
+    private static string BuildContentKey(DateOnly date, decimal amount, string? sourceId, string? destinationId)
+    {
+        return $"{date:yyyyMMdd}|{amount:0.00}|{sourceId ?? ""}|{destinationId ?? ""}";
+    }
+
+    private async Task<int> ImportTransactionsInternalAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, IReadOnlyList<AccountSingle> accounts, bool errorIfDuplicateHash, bool skipDuplicatesByContent, bool useBatchMode)
     {
         var added = 0;
 
+        if (transactions.Count == 0)
+            return added;
+
         // Pre-fetch existing transfers for this account to detect duplicates across import sources.
-        // Different sources (QFX vs Actual Budget) use different external_ids for the same real
+        // Different sources use different external_ids for the same real
         // transaction, so we need to match by date + amount + opposing account.
         HashSet<string>? existingTransferKeys = null;
-        if (transactions.Count > 0)
+
+        try
+        {
+            var dates = transactions.Select(t => t.Date).ToList();
+            existingTransferKeys = await GetExistingTransferKeysAsync(accountId, dates.Min(), dates.Max());
+        }
+        catch
+        {
+            // If lookup fails, proceed without transfer dedup — server-side hash dedup still applies
+        }
+        
+        // Content-based dedup: fetch existing transactions and build keys from
+        // date + amount + source + destination to catch duplicates from other tools.
+        HashSet<string>? existingContentKeys = null;
+        if (skipDuplicatesByContent)
         {
             try
             {
                 var dates = transactions.Select(t => t.Date).ToList();
-                existingTransferKeys = await GetExistingTransferKeysAsync(accountId, dates.Min(), dates.Max());
+                existingContentKeys = await GetExistingContentKeysAsync(accountId, dates.Min(), dates.Max());
             }
             catch
             {
-                // If lookup fails, proceed without transfer dedup — server-side hash dedup still applies
+                // If lookup fails, proceed without content dedup
             }
         }
 
@@ -365,6 +456,25 @@ public sealed class FireflyIIIService : IDisposable
                 }
             }
 
+            // Content-based dedup: skip if a transaction with the same date, amount,
+            // source, and destination already exists in Firefly III.
+            if (existingContentKeys != null)
+            {
+                // Resolve source/destination IDs for the content key.
+                // For transfers, both IDs are already resolved.
+                // For withdrawals/deposits, one side is the account ID and the other is a name
+                // that may resolve to an existing account.
+                var resolvedSourceId = sourceId ?? (sourceName != null ? TryMatchAccountByName(sourceName, accounts) : null);
+                var resolvedDestId = destinationId ?? (destinationName != null ? TryMatchAccountByName(destinationName, accounts) : null);
+
+                var contentKey = BuildContentKey(tx.Date, Math.Abs(tx.Amount), resolvedSourceId, resolvedDestId);
+                if (existingContentKeys.Contains(contentKey))
+                {
+                    // Duplicate by content — skip
+                    continue;
+                }
+            }
+
             var split = new TransactionSplitStore
             {
                 Type = transactionType,
@@ -387,8 +497,9 @@ public sealed class FireflyIIIService : IDisposable
             {
                 Error_if_duplicate_hash = errorIfDuplicateHash,
                 Apply_rules = true,
-                Fire_webhooks = true,
-                Transactions = [split],
+                Fire_webhooks = true,        
+                Batch_submission = useBatchMode,
+                Transactions = [split]                
             };
 
             try
@@ -400,6 +511,10 @@ public sealed class FireflyIIIService : IDisposable
             {
                 OnTransactionError?.Invoke(tx, ex.Response ?? ex.Message);
             }
+        }
+        if (useBatchMode)
+        {
+            await _client!.FinishBatchAsync(null);
         }
 
         return added;

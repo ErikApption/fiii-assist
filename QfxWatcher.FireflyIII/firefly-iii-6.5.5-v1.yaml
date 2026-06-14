@@ -23226,6 +23226,10 @@ components:
           type: boolean
           example: false
           description: "Whether or not to apply rules when submitting transaction."
+        batch_submission:
+          type: boolean
+          example: false
+          description: "Whether or not to submit the transaction as a batch."
         fire_webhooks:
           type: boolean
           example: true

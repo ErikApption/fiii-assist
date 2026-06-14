@@ -55,6 +55,13 @@ public class AppSettings
     public bool SkipDuplicateTransactions { get; set; } = true;
 
     /// <summary>
+    /// When true, checks for existing transactions with the same date, amount, source, and
+    /// destination account before importing. Catches duplicates that were created by other
+    /// tools without setting external_id/FitId correctly.
+    /// </summary>
+    public bool SkipDuplicatesByContent { get; set; }
+
+    /// <summary>
     /// Persisted result of the last successful connection test.
     /// When true, the app will auto-connect on startup using the saved credentials.
     /// </summary>

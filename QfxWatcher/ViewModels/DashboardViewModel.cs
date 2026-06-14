@@ -224,7 +224,7 @@ public partial class DashboardViewModel : ObservableObject
                     }
                 }
 
-                added = await _budget.ImportTransactionsAsync(targetId, toImport, cfg.ErrorIfDuplicateHash);
+                added = await _budget.ImportTransactionsAsync(targetId, toImport, cfg.ErrorIfDuplicateHash, cfg.SkipDuplicatesByContent);
             }
 
             var entry = new ImportLogEntry

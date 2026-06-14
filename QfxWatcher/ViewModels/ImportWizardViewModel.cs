@@ -306,7 +306,8 @@ public partial class ImportWizardViewModel : ObservableObject
                 await _fireflyService.ImportTransactionsAsync(
                     accountId,
                     [tx],
-                    settings.ErrorIfDuplicateHash);
+                    settings.ErrorIfDuplicateHash,
+                    settings.SkipDuplicatesByContent);
                 ImportedCount++;
             }
             catch

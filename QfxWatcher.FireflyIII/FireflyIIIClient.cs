@@ -43349,6 +43349,12 @@ namespace QfxWatcher.FireflyIII
         public bool Apply_rules { get; set; }
 
         /// <summary>
+        /// Whether or not to submit the transaction as a batch.
+        /// </summary>
+        [System.Text.Json.Serialization.JsonPropertyName("batch_submission")]
+        public bool Batch_submission { get; set; }
+
+        /// <summary>
         /// Whether or not to fire the webhooks that are related to this event.
         /// </summary>
         [System.Text.Json.Serialization.JsonPropertyName("fire_webhooks")]

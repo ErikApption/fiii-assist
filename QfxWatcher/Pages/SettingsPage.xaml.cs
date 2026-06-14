@@ -6,7 +6,7 @@ namespace QfxWatcher.Pages;
 
 public sealed partial class SettingsPage : Page
 {
-    private bool _tokenBoxInitialized;
+    private bool _initialized;
 
     public SettingsViewModel ViewModel => App.SettingsViewModel;
 
@@ -18,18 +18,30 @@ public sealed partial class SettingsPage : Page
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Populate the PasswordBox from the ViewModel after the page is fully loaded.
-        // This avoids the PasswordBox TwoWay binding issue that pushes empty values
-        // back to the source during initialization.
+        // Populate the PasswordBox manually since it doesn't support x:Bind properly.
         TokenBox.Password = ViewModel.ServerToken;
-        _tokenBoxInitialized = true;
+
+        // Mark initialized — only after this will we forward UI changes to the ViewModel.
+        _initialized = true;
+    }
+
+    private void ServerUrlBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_initialized) return;
+
+        if (ViewModel.ServerUrl != ServerUrlBox.Text)
+        {
+            ViewModel.ServerUrl = ServerUrlBox.Text;
+        }
     }
 
     private void TokenBox_PasswordChanged(object sender, RoutedEventArgs e)
     {
-        // Ignore the event fired during initial population
-        if (!_tokenBoxInitialized) return;
+        if (!_initialized) return;
 
-        ViewModel.ServerToken = TokenBox.Password;
+        if (ViewModel.ServerToken != TokenBox.Password)
+        {
+            ViewModel.ServerToken = TokenBox.Password;
+        }
     }
 }

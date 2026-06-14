@@ -50,10 +50,13 @@ public class SettingsService
         return new AppSettings();
     }
 
+    private readonly SemaphoreSlim _saveSemaphore = new(1, 1);
+
     public void Save(AppSettings settings)
     {
         try
         {
+            _saveSemaphore.Wait();
             var json = JsonSerializer.Serialize(settings, _jsonOptions);
 
             // Atomic write: write to a temp file, then replace the target.
@@ -70,9 +73,14 @@ public class SettingsService
             // Atomic rename (on NTFS this is atomic for same-volume moves)
             File.Move(tempPath, _settingsFilePath, overwrite: true);
         }
-        catch
+        catch (Exception ex)
         {
             // Swallow write errors to avoid crashing the app
+            System.Diagnostics.Debug.WriteLine($"[Settings] Error saving: {ex.Message}");
+        }
+        finally
+        {
+            _saveSemaphore.Release();
         }
     }
 

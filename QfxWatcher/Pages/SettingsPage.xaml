@@ -26,6 +26,7 @@
                         Header="Server URL"
                         PlaceholderText="https://firefly.example.com"
                         Text="{x:Bind ViewModel.ServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        TextChanged="ServerUrlBox_TextChanged"
                         InputScope="Url" />
 
                     <PasswordBox
@@ -123,6 +124,10 @@
                     <ToggleSwitch
                         Header="Skip duplicate transactions (by FitId)"
                         IsOn="{x:Bind ViewModel.SkipDuplicateTransactions, Mode=TwoWay}" />
+
+                    <ToggleSwitch
+                        Header="Skip duplicates by content (same date, amount, source and destination)"
+                        IsOn="{x:Bind ViewModel.SkipDuplicatesByContent, Mode=TwoWay}" />
 
                     <ToggleSwitch
                         Header="Error if duplicate transaction detected"
