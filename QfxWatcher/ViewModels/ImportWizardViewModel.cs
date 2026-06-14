@@ -273,7 +273,7 @@ public partial class ImportWizardViewModel : ObservableObject
         }
 
         // Build set of existing external IDs for duplicate detection
-        HashSet<string> existingIds = [];
+        HashSet<string>? existingIds = null;
         if (settings.SkipDuplicateTransactions)
         {
             try
@@ -289,31 +289,37 @@ public partial class ImportWizardViewModel : ObservableObject
             }
         }
 
-        // Import each transaction individually so failures don't block remaining ones
-        foreach (var tx in Transactions)
+        // Wire up progress callback to update UI counters
+        _fireflyService.OnTransactionProcessed = (tx, result) =>
         {
-            // Skip if this transaction's FitId already exists in Firefly III
-            if (settings.SkipDuplicateTransactions
-                && !string.IsNullOrWhiteSpace(tx.FitId)
-                && existingIds.Contains(tx.FitId))
+            switch (result)
             {
-                SkippedCount++;
-                continue;
+                case ImportTransactionResult.Imported:
+                    ImportedCount++;
+                    break;
+                case ImportTransactionResult.Skipped:
+                    SkippedCount++;
+                    break;
+                case ImportTransactionResult.Failed:
+                    FailedCount++;
+                    break;
             }
+        };
 
-            try
-            {
-                await _fireflyService.ImportTransactionsAsync(
-                    accountId,
-                    [tx],
-                    settings.ErrorIfDuplicateHash,
-                    settings.SkipDuplicatesByContent);
-                ImportedCount++;
-            }
-            catch
-            {
-                FailedCount++;
-            }
+        try
+        {
+            // Pass the full transaction list — the service handles iteration and progress
+            await _fireflyService.ImportTransactionsAsync(
+                accountId,
+                Transactions.ToList(),
+                settings.ErrorIfDuplicateHash,
+                settings.SkipDuplicatesByContent,
+                existingExternalIds: existingIds, useBatchMode: true);
+        }
+        finally
+        {
+            // Clear callback to avoid holding references
+            _fireflyService.OnTransactionProcessed = null;
         }
 
         // Transition to Results step

@@ -27,6 +27,12 @@ public sealed class FireflyIIIService : IDisposable
     public Action<FIIITransaction, string>? OnTransactionError { get; set; }
 
     /// <summary>
+    /// Invoked after each transaction is processed during an import.
+    /// Parameters: (transaction, result) where result indicates success, skipped, or failed.
+    /// </summary>
+    public Action<FIIITransaction, ImportTransactionResult>? OnTransactionProcessed { get; set; }
+
+    /// <summary>
     /// Gets the underlying Firefly III client instance, or null if not configured.
     /// </summary>
     public Client? Client => _client;
@@ -211,7 +217,7 @@ public sealed class FireflyIIIService : IDisposable
         return accounts;
     }
 
-    public async Task<int> ImportTransactionsAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, bool errorIfDuplicateHash = false, bool skipDuplicatesByContent = false, bool useBatchMode = false)
+    public async Task<int> ImportTransactionsAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, bool errorIfDuplicateHash = false, bool skipDuplicatesByContent = false, bool useBatchMode = false, HashSet<string>? existingExternalIds = null)
     {
         EnsureConfigured();
 
@@ -230,7 +236,7 @@ public sealed class FireflyIIIService : IDisposable
             accounts = [];
         }
 
-        return await ImportTransactionsInternalAsync(accountId, transactions, accounts, errorIfDuplicateHash, skipDuplicatesByContent, useBatchMode);
+        return await ImportTransactionsInternalAsync(accountId, transactions, accounts, errorIfDuplicateHash, skipDuplicatesByContent, useBatchMode, existingExternalIds);
     }
 
     /// <summary>
@@ -369,7 +375,7 @@ public sealed class FireflyIIIService : IDisposable
         return $"{date:yyyyMMdd}|{amount:0.00}|{sourceId ?? ""}|{destinationId ?? ""}";
     }
 
-    private async Task<int> ImportTransactionsInternalAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, IReadOnlyList<AccountSingle> accounts, bool errorIfDuplicateHash, bool skipDuplicatesByContent, bool useBatchMode)
+    private async Task<int> ImportTransactionsInternalAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, IReadOnlyList<AccountSingle> accounts, bool errorIfDuplicateHash, bool skipDuplicatesByContent, bool useBatchMode, HashSet<string>? existingExternalIds)
     {
         var added = 0;
 
@@ -409,6 +415,15 @@ public sealed class FireflyIIIService : IDisposable
 
         foreach (var tx in transactions)
         {
+            // Skip by external ID (FitId) if caller provided a set of known IDs
+            if (existingExternalIds != null
+                && !string.IsNullOrWhiteSpace(tx.FitId)
+                && existingExternalIds.Contains(tx.FitId))
+            {
+                OnTransactionProcessed?.Invoke(tx, ImportTransactionResult.Skipped);
+                continue;
+            }
+
             var isDeposit = tx.Amount >= 0m;
             var transactionDate = tx.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
@@ -451,6 +466,7 @@ public sealed class FireflyIIIService : IDisposable
                     if (existingTransferKeys.Contains(key))
                     {
                         // Transfer already exists — skip to avoid duplicate
+                        OnTransactionProcessed?.Invoke(tx, ImportTransactionResult.Skipped);
                         continue;
                     }
                 }
@@ -471,6 +487,7 @@ public sealed class FireflyIIIService : IDisposable
                 if (existingContentKeys.Contains(contentKey))
                 {
                     // Duplicate by content — skip
+                    OnTransactionProcessed?.Invoke(tx, ImportTransactionResult.Skipped);
                     continue;
                 }
             }
@@ -506,10 +523,12 @@ public sealed class FireflyIIIService : IDisposable
             {
                 _ = await _client!.StoreTransactionAsync(null, payload);
                 added++;
+                OnTransactionProcessed?.Invoke(tx, ImportTransactionResult.Imported);
             }
             catch (ApiException ex) when (ex.StatusCode == 422)
             {
                 OnTransactionError?.Invoke(tx, ex.Response ?? ex.Message);
+                OnTransactionProcessed?.Invoke(tx, ImportTransactionResult.Failed);
             }
         }
         if (useBatchMode)

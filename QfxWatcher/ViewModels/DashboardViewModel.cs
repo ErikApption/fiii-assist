@@ -202,21 +202,15 @@ public partial class DashboardViewModel : ObservableObject
             int skipped = 0;
             if (!string.IsNullOrWhiteSpace(targetId) && IsConnected)
             {
-                // Skip duplicates if enabled
-                IReadOnlyList<FIIITransaction> toImport = transactions;
+                // Build the existing external IDs set for duplicate detection
+                HashSet<string>? existingIds = null;
                 if (cfg.SkipDuplicateTransactions && transactions.Count > 0)
                 {
                     try
                     {
                         var dates = transactions.Select(t => t.Date).ToList();
-                        var existingIds = await _budget.GetExistingExternalIdsAsync(
+                        existingIds = await _budget.GetExistingExternalIdsAsync(
                             targetId, dates.Min(), dates.Max());
-
-                        var filtered = transactions
-                            .Where(t => string.IsNullOrWhiteSpace(t.FitId) || !existingIds.Contains(t.FitId))
-                            .ToList();
-                        skipped = transactions.Count - filtered.Count;
-                        toImport = filtered;
                     }
                     catch
                     {
@@ -224,7 +218,26 @@ public partial class DashboardViewModel : ObservableObject
                     }
                 }
 
-                added = await _budget.ImportTransactionsAsync(targetId, toImport, cfg.ErrorIfDuplicateHash, cfg.SkipDuplicatesByContent);
+                // Wire progress callback to track skipped count
+                _budget.OnTransactionProcessed = (tx, result) =>
+                {
+                    if (result == ImportTransactionResult.Skipped)
+                        skipped++;
+                };
+
+                try
+                {
+                    added = await _budget.ImportTransactionsAsync(
+                        targetId,
+                        transactions,
+                        cfg.ErrorIfDuplicateHash,
+                        cfg.SkipDuplicatesByContent,
+                        existingExternalIds: existingIds);
+                }
+                finally
+                {
+                    _budget.OnTransactionProcessed = null;
+                }
             }
 
             var entry = new ImportLogEntry
