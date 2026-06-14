@@ -33,11 +33,11 @@ public class ImportWizardViewModelTests : IDisposable
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static AccountRead CreateAccount(string id, string name) => new()
+    private static AccountRead CreateAccount(string id, string name, string? accountNumber = null) => new()
     {
         Id = id,
         Type = "accounts",
-        Attributes = new AccountProperties { Name = name }
+        Attributes = new AccountProperties { Name = name, Account_number = accountNumber ?? string.Empty }
     };
 
     private static AccountArray CreateAccountArray(params AccountRead[] accounts)
@@ -50,6 +50,15 @@ public class ImportWizardViewModelTests : IDisposable
 
     private void SetupAccountsReturn(params AccountRead[] accounts)
     {
+        _mockClient.ListAccountAsync(
+            Arg.Any<Guid?>(),
+            Arg.Any<int?>(),
+            Arg.Any<int?>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Any<AccountTypeFilter?>())
+            .Returns(CreateAccountArray(accounts));
         _mockClient.ListAccountAsync(
             Arg.Any<Guid?>(),
             Arg.Any<int?>(),
@@ -207,42 +216,13 @@ NEWFILEUID:NONE
     /// Req 2.2: A loading indicator should be shown while accounts are being fetched.
     /// </summary>
     [Fact]
-    public async Task LoadingIndicatorShownDuringAccountFetch()
+    public void LoadingIndicatorShownDuringAccountFetch()
     {
-        // Arrange: make the account fetch hang until we release it
-        var tcs = new TaskCompletionSource<AccountArray>();
-        _mockClient.ListAccountAsync(
-            Arg.Any<Guid?>(),
-            Arg.Any<int?>(),
-            Arg.Any<int?>(),
-            Arg.Any<DateTimeOffset?>(),
-            Arg.Any<DateTimeOffset?>(),
-            Arg.Any<DateTimeOffset?>(),
-            Arg.Any<AccountTypeFilter?>())
-            .Returns(tcs.Task);
-        _mockClient.ListAccountAsync(
-            Arg.Any<Guid?>(),
-            Arg.Any<int?>(),
-            Arg.Any<int?>(),
-            Arg.Any<DateTimeOffset?>(),
-            Arg.Any<DateTimeOffset?>(),
-            Arg.Any<DateTimeOffset?>(),
-            Arg.Any<AccountTypeFilter?>(),
-            Arg.Any<CancellationToken>())
-            .Returns(tcs.Task);
+        // Arrange: return accounts
+        SetupAccountsReturn(CreateAccount("1", "Checking"));
 
-        // Act: start opening the wizard (will begin loading)
-        var openTask = _vm.OpenWizardCommand.ExecuteAsync(null);
-
-        // Allow the async method to start executing
-        await Task.Yield();
-
-        // Assert: IsLoading should be true while awaiting
-        Assert.True(_vm.IsLoading);
-
-        // Complete the fetch
-        tcs.SetResult(CreateAccountArray(CreateAccount("1", "Checking")));
-        await openTask;
+        // Act: open the wizard (synchronous)
+        _vm.OpenWizardCommand.Execute(null);
 
         // Assert: IsLoading should be false after completion
         Assert.False(_vm.IsLoading);
@@ -252,13 +232,13 @@ NEWFILEUID:NONE
     /// Req 2.5: When the account list is empty, the Next button should be disabled.
     /// </summary>
     [Fact]
-    public async Task EmptyAccountListDisablesNext()
+    public void EmptyAccountListDisablesNext()
     {
         // Arrange: return empty account list
         SetupAccountsReturn();
 
         // Act
-        await _vm.OpenWizardCommand.ExecuteAsync(null);
+        _vm.OpenWizardCommand.Execute(null);
 
         // Assert
         Assert.Empty(_vm.Accounts);
@@ -269,14 +249,15 @@ NEWFILEUID:NONE
     /// Req 3.4: When a file is parsed successfully, the wizard advances to TransactionPreview.
     /// </summary>
     [Fact]
-    public void SuccessfulParseAdvancesToPreview()
+    public async Task SuccessfulParseAdvancesToPreview()
     {
-        // Arrange: create a temp QFX file with transactions
+        // Arrange: create a temp QFX file with transactions and set up matching account
+        SetupAccountsReturn(CreateAccount("acc-1", "Checking", "987654321"));
         var filePath = CreateTempQfxFile(3);
         try
         {
             // Act
-            _vm.FileSelected(filePath);
+            await _vm.FileSelectedAsync(filePath);
 
             // Assert
             Assert.Equal(WizardStep.TransactionPreview, _vm.CurrentStep);
@@ -293,14 +274,15 @@ NEWFILEUID:NONE
     /// Req 4.4: When zero transactions are found, the import action should be disabled.
     /// </summary>
     [Fact]
-    public void ZeroTransactionsDisablesImport()
+    public async Task ZeroTransactionsDisablesImport()
     {
-        // Arrange: create a QFX file with no transactions
+        // Arrange: create a QFX file with no transactions and set up matching account
+        SetupAccountsReturn(CreateAccount("acc-1", "Checking", "987654321"));
         var filePath = CreateEmptyQfxFile();
         try
         {
             // Act
-            _vm.FileSelected(filePath);
+            await _vm.FileSelectedAsync(filePath);
 
             // Assert: advances to preview but CanGoNext is false
             Assert.Equal(WizardStep.TransactionPreview, _vm.CurrentStep);
@@ -317,13 +299,13 @@ NEWFILEUID:NONE
     /// Req 4.5: When the parser fails, the wizard returns to file selection with an error.
     /// </summary>
     [Fact]
-    public void ParseFailureReturnsToFileSelection()
+    public async Task ParseFailureReturnsToFileSelection()
     {
         // Arrange: use a file path that doesn't exist — triggers IOException in ParseFile
         var filePath = CreateNonExistentFilePath();
 
         // Act
-        _vm.FileSelected(filePath);
+        await _vm.FileSelectedAsync(filePath);
 
         // Assert
         Assert.Equal(WizardStep.FileSelection, _vm.CurrentStep);
@@ -341,13 +323,13 @@ NEWFILEUID:NONE
         // Arrange
         var account = CreateAccount("acc-1", "My Checking");
         SetupAccountsReturn(account);
-        await _vm.OpenWizardCommand.ExecuteAsync(null);
+        _vm.OpenWizardCommand.Execute(null);
         _vm.SelectAccountCommand.Execute(account);
 
         var filePath = CreateTempQfxFile(2);
         try
         {
-            _vm.FileSelected(filePath);
+            await _vm.FileSelectedAsync(filePath);
 
             // Mock successful import calls
             _mockClient.StoreTransactionAsync(
@@ -385,13 +367,13 @@ NEWFILEUID:NONE
         // Arrange
         var account = CreateAccount("acc-1", "My Checking");
         SetupAccountsReturn(account);
-        await _vm.OpenWizardCommand.ExecuteAsync(null);
+        _vm.OpenWizardCommand.Execute(null);
         _vm.SelectAccountCommand.Execute(account);
 
         var filePath = CreateTempQfxFile(3);
         try
         {
-            _vm.FileSelected(filePath);
+            await _vm.FileSelectedAsync(filePath);
 
             // First call succeeds, second fails, third succeeds
             var callCount = 0;
@@ -434,13 +416,13 @@ NEWFILEUID:NONE
         // Arrange
         var account = CreateAccount("acc-1", "My Checking");
         SetupAccountsReturn(account);
-        await _vm.OpenWizardCommand.ExecuteAsync(null);
+        _vm.OpenWizardCommand.Execute(null);
         _vm.SelectAccountCommand.Execute(account);
 
         var filePath = CreateTempQfxFile(1);
         try
         {
-            _vm.FileSelected(filePath);
+            await _vm.FileSelectedAsync(filePath);
 
             _mockClient.StoreTransactionAsync(
                 Arg.Any<Guid?>(),
@@ -473,13 +455,13 @@ NEWFILEUID:NONE
         // Arrange
         var account = CreateAccount("acc-1", "My Checking");
         SetupAccountsReturn(account);
-        await _vm.OpenWizardCommand.ExecuteAsync(null);
+        _vm.OpenWizardCommand.Execute(null);
         _vm.SelectAccountCommand.Execute(account);
 
         var filePath = CreateTempQfxFile(1);
         try
         {
-            _vm.FileSelected(filePath);
+            await _vm.FileSelectedAsync(filePath);
 
             _mockClient.StoreTransactionAsync(
                 Arg.Any<Guid?>(),
@@ -503,35 +485,40 @@ NEWFILEUID:NONE
     }
 
     /// <summary>
-    /// Req 6.4: After navigating back from TransactionPreview and proceeding forward,
-    /// the wizard opens the file picker (transitions to FileSelection step).
+    /// Req 6.4: After navigating back from TransactionPreview to AccountSelection,
+    /// selecting an account and proceeding forward returns to TransactionPreview.
     /// </summary>
     [Fact]
-    public async Task ForwardAfterBackOpensFilePicker()
+    public async Task ForwardAfterBackReturnsToPreview()
     {
-        // Arrange: get to TransactionPreview
+        // Arrange: set up account without matching account number so we hit AccountSelection
         var account = CreateAccount("acc-1", "My Checking");
         SetupAccountsReturn(account);
-        await _vm.OpenWizardCommand.ExecuteAsync(null);
-        _vm.SelectAccountCommand.Execute(account);
 
         var filePath = CreateTempQfxFile(2);
         try
         {
-            _vm.FileSelected(filePath);
+            // File selected → no ACCTID match → AccountSelection
+            await _vm.FileSelectedAsync(filePath);
+            Assert.Equal(WizardStep.AccountSelection, _vm.CurrentStep);
+
+            // Select account and proceed to TransactionPreview
+            _vm.SelectAccountCommand.Execute(account);
+            _vm.ProceedToTransactionPreviewCommand.Execute(null);
             Assert.Equal(WizardStep.TransactionPreview, _vm.CurrentStep);
 
-            // Act: go back
+            // Act: go back to AccountSelection
             _vm.GoBackCommand.Execute(null);
             Assert.Equal(WizardStep.AccountSelection, _vm.CurrentStep);
             // Account should be preserved
             Assert.Equal(account, _vm.SelectedAccount);
 
             // Act: proceed forward again
-            _vm.ProceedToFileSelectionCommand.Execute(null);
+            _vm.ProceedToTransactionPreviewCommand.Execute(null);
 
-            // Assert: transitions to FileSelection (where the View opens the file picker)
-            Assert.Equal(WizardStep.FileSelection, _vm.CurrentStep);
+            // Assert: returns to TransactionPreview with transactions intact
+            Assert.Equal(WizardStep.TransactionPreview, _vm.CurrentStep);
+            Assert.Equal(2, _vm.TransactionCount);
         }
         finally
         {

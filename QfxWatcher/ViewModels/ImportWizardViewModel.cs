@@ -17,6 +17,8 @@ public partial class ImportWizardViewModel : ObservableObject
 {
     private readonly FireflyIIIService _fireflyService;
     private readonly SettingsService   _settings;
+    private bool _accountAutoMatched;
+    private string _qfxAccountId = string.Empty;
 
     // ── Observable state ──────────────────────────────────────────────────────
 
@@ -82,13 +84,17 @@ public partial class ImportWizardViewModel : ObservableObject
     private int _failedCount;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProcessedCount))]
+    private int _skippedCount;
+
+    [ObservableProperty]
     private int _totalCount;
 
     /// <summary>
-    /// Gets the total number of transactions processed so far (imported + failed).
+    /// Gets the total number of transactions processed so far (imported + failed + skipped).
     /// Used by the UI to display progress during import.
     /// </summary>
-    public int ProcessedCount => ImportedCount + FailedCount;
+    public int ProcessedCount => ImportedCount + FailedCount + SkippedCount;
 
     // ── Events ────────────────────────────────────────────────────────────────
 
@@ -111,10 +117,11 @@ public partial class ImportWizardViewModel : ObservableObject
     // ── Commands ──────────────────────────────────────────────────────────────
 
     [RelayCommand]
-    private async Task OpenWizardAsync()
+    private void OpenWizard()
     {
-        CurrentStep = WizardStep.AccountSelection;
-        await LoadAccountsAsync();
+        CurrentStep = WizardStep.FileSelection;
+        CanGoBack = false;
+        CanGoNext = false;
     }
 
     [RelayCommand]
@@ -131,22 +138,28 @@ public partial class ImportWizardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ProceedToFileSelection()
+    private void ProceedToTransactionPreview()
     {
-        CurrentStep = WizardStep.FileSelection;
-        CanGoBack = false;
+        if (SelectedAccount is null)
+            return;
+
+        CurrentStep = WizardStep.TransactionPreview;
+        CanGoBack = true;
+        CanGoNext = TransactionCount > 0;
     }
 
     /// <summary>
     /// Called by the View when the user selects a file from the FilePicker.
-    /// Parses the file and transitions to TransactionPreview on success,
-    /// or sets an error and returns to FileSelection on failure.
+    /// Parses the file, extracts ACCTID, loads accounts from Firefly III,
+    /// and auto-matches the account if possible. Skips account selection
+    /// when a match is found.
     /// </summary>
-    public void FileSelected(string path)
+    public async Task FileSelectedAsync(string path)
     {
         ErrorMessage = string.Empty;
         SelectedFilePath = path;
         SelectedFileName = System.IO.Path.GetFileName(path);
+        _accountAutoMatched = false;
 
         try
         {
@@ -160,11 +173,57 @@ public partial class ImportWizardViewModel : ObservableObject
 
             TransactionCount = Transactions.Count;
 
-            // Disable import action when zero transactions found
-            CanGoNext = TransactionCount > 0;
+            // Extract the ACCTID from the QFX file header
+            _qfxAccountId = QfxParserService.ExtractAccountId(path);
 
-            CurrentStep = WizardStep.TransactionPreview;
-            CanGoBack = true;
+            // Load accounts from Firefly III to attempt auto-matching
+            await LoadAccountsAsync();
+
+            if (!string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                // Failed to load accounts — show account selection step with the error
+                CurrentStep = WizardStep.AccountSelection;
+                CanGoBack = true;
+                return;
+            }
+
+            // Try to auto-match using the ACCTID from the QFX file
+            AccountRead? matchedAccount = null;
+            if (!string.IsNullOrWhiteSpace(_qfxAccountId))
+            {
+                matchedAccount = Accounts.FirstOrDefault(a =>
+                    !string.IsNullOrWhiteSpace(a.Attributes?.Account_number) &&
+                    a.Attributes.Account_number.Trim().Equals(_qfxAccountId.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                // Also try suffix match (some banks truncate account numbers in QFX)
+                matchedAccount ??= Accounts.FirstOrDefault(a =>
+                    !string.IsNullOrWhiteSpace(a.Attributes?.Account_number) &&
+                    _qfxAccountId.Trim().Length >= 4 &&
+                    a.Attributes.Account_number.Trim().EndsWith(_qfxAccountId.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                // Try IBAN match
+                matchedAccount ??= Accounts.FirstOrDefault(a =>
+                    !string.IsNullOrWhiteSpace(a.Attributes?.Iban) &&
+                    (a.Attributes.Iban.Trim().Equals(_qfxAccountId.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                     a.Attributes.Iban.Trim().EndsWith(_qfxAccountId.Trim(), StringComparison.OrdinalIgnoreCase)));
+            }
+
+            if (matchedAccount is not null)
+            {
+                // Auto-matched — skip account selection
+                SelectedAccount = matchedAccount;
+                _accountAutoMatched = true;
+                CanGoNext = TransactionCount > 0;
+                CurrentStep = WizardStep.TransactionPreview;
+                CanGoBack = true;
+            }
+            else
+            {
+                // No match — user must select an account
+                CanGoNext = SelectedAccount != null;
+                CurrentStep = WizardStep.AccountSelection;
+                CanGoBack = true;
+            }
         }
         catch (Exception ex)
         {
@@ -187,15 +246,61 @@ public partial class ImportWizardViewModel : ObservableObject
         TotalCount = Transactions.Count;
         ImportedCount = 0;
         FailedCount = 0;
+        SkippedCount = 0;
         CanGoBack = false;
         CanGoNext = false;
 
         var settings = _settings.Load();
         var accountId = SelectedAccount.Id;
 
+        // If the user manually selected the account and the QFX file had an ACCTID,
+        // update the Firefly III account's account_number so future imports auto-match.
+        if (!_accountAutoMatched && !string.IsNullOrWhiteSpace(_qfxAccountId))
+        {
+            var existingNumber = SelectedAccount.Attributes?.Account_number?.Trim();
+            if (string.IsNullOrWhiteSpace(existingNumber) ||
+                !existingNumber.Equals(_qfxAccountId.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    await _fireflyService.UpdateAccountNumberAsync(accountId, _qfxAccountId.Trim());
+                }
+                catch
+                {
+                    // Non-fatal — the import can still proceed without the account number update
+                }
+            }
+        }
+
+        // Build set of existing external IDs for duplicate detection
+        HashSet<string> existingIds = [];
+        if (settings.SkipDuplicateTransactions)
+        {
+            try
+            {
+                var dates = Transactions.Select(t => t.Date).ToList();
+                var minDate = dates.Min();
+                var maxDate = dates.Max();
+                existingIds = await _fireflyService.GetExistingExternalIdsAsync(accountId, minDate, maxDate);
+            }
+            catch
+            {
+                // If lookup fails, proceed without skipping — server-side dedup still applies
+            }
+        }
+
         // Import each transaction individually so failures don't block remaining ones
         foreach (var tx in Transactions)
         {
+            // Skip if this transaction's FitId already exists in Firefly III
+            if (settings.SkipDuplicateTransactions
+                && !string.IsNullOrWhiteSpace(tx.FitId)
+                && existingIds.Contains(tx.FitId))
+            {
+                SkippedCount++;
+                continue;
+            }
+
             try
             {
                 await _fireflyService.ImportTransactionsAsync(
@@ -219,6 +324,7 @@ public partial class ImportWizardViewModel : ObservableObject
             FileName = SelectedFileName,
             AccountName = SelectedAccount.Attributes.Name,
             TransactionCount = ImportedCount,
+            SkippedCount = SkippedCount,
             Success = FailedCount == 0,
             ErrorMessage = FailedCount > 0
                 ? $"{FailedCount} transaction(s) failed to import"
@@ -233,18 +339,34 @@ public partial class ImportWizardViewModel : ObservableObject
         switch (CurrentStep)
         {
             case WizardStep.TransactionPreview:
-                Transactions.Clear();
-                TransactionCount = 0;
-                CurrentStep = WizardStep.AccountSelection;
-                CanGoBack = false;
+                if (_accountAutoMatched)
+                {
+                    // Account was auto-matched — go back to file selection
+                    Transactions.Clear();
+                    TransactionCount = 0;
+                    SelectedAccount = null;
+                    _accountAutoMatched = false;
+                    CurrentStep = WizardStep.FileSelection;
+                    CanGoBack = false;
+                }
+                else
+                {
+                    // User selected the account — go back to account selection
+                    CurrentStep = WizardStep.AccountSelection;
+                    CanGoNext = SelectedAccount != null;
+                    CanGoBack = true;
+                }
                 break;
 
-            case WizardStep.FileSelection:
-                CurrentStep = WizardStep.AccountSelection;
+            case WizardStep.AccountSelection:
+                // Go back to file selection
+                Transactions.Clear();
+                TransactionCount = 0;
+                SelectedAccount = null;
+                CurrentStep = WizardStep.FileSelection;
                 CanGoBack = false;
                 break;
         }
-        // SelectedAccount is preserved — no clearing here
     }
 
     [RelayCommand]
@@ -262,8 +384,11 @@ public partial class ImportWizardViewModel : ObservableObject
         CanGoBack = false;
         ImportedCount = 0;
         FailedCount = 0;
+        SkippedCount = 0;
         TotalCount = 0;
         TransactionCount = 0;
+        _accountAutoMatched = false;
+        _qfxAccountId = string.Empty;
     }
 
     [RelayCommand]
@@ -273,12 +398,17 @@ public partial class ImportWizardViewModel : ObservableObject
         TransactionCount = 0;
         ImportedCount = 0;
         FailedCount = 0;
+        SkippedCount = 0;
         TotalCount = 0;
         SelectedFilePath = string.Empty;
         SelectedFileName = string.Empty;
+        SelectedAccount = null;
         ErrorMessage = string.Empty;
+        _accountAutoMatched = false;
+        _qfxAccountId = string.Empty;
         CurrentStep = WizardStep.FileSelection;
         CanGoBack = false;
+        CanGoNext = false;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

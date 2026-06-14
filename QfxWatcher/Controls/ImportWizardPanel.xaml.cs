@@ -9,18 +9,32 @@ namespace QfxWatcher.Controls;
 
 public sealed partial class ImportWizardPanel : UserControl
 {
+    private bool _isFilePickerOpen;
+
     public ImportWizardViewModel ViewModel => App.ImportWizardViewModel;
 
     public ImportWizardPanel()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+    }
+
+    private void OnUnloaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
     }
 
     private async void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ImportWizardViewModel.CurrentStep)
-            && ViewModel.CurrentStep == WizardStep.FileSelection)
+            && ViewModel.CurrentStep == WizardStep.FileSelection
+            && !_isFilePickerOpen)
         {
             await OpenFilePickerAsync();
         }
@@ -28,25 +42,33 @@ public sealed partial class ImportWizardPanel : UserControl
 
     private async Task OpenFilePickerAsync()
     {
-        var picker = new FileOpenPicker();
-        picker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
-        picker.FileTypeFilter.Add(".qfx");
-        picker.FileTypeFilter.Add(".ofx");
-
-        // WinUI 3 requires initializing the picker with the window handle
-        var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
-        InitializeWithWindow.Initialize(picker, hwnd);
-
-        var file = await picker.PickSingleFileAsync();
-
-        if (file != null)
+        _isFilePickerOpen = true;
+        try
         {
-            ViewModel.FileSelected(file.Path);
+            var picker = new FileOpenPicker();
+            picker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+            picker.FileTypeFilter.Add(".qfx");
+            picker.FileTypeFilter.Add(".ofx");
+
+            // WinUI 3 requires initializing the picker with the window handle
+            var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
+            InitializeWithWindow.Initialize(picker, hwnd);
+
+            var file = await picker.PickSingleFileAsync();
+
+            if (file != null)
+            {
+                await ViewModel.FileSelectedAsync(file.Path);
+            }
+            else
+            {
+                // User cancelled the picker — close the wizard
+                ViewModel.CloseCommand.Execute(null);
+            }
         }
-        else
+        finally
         {
-            // User cancelled the picker — go back to account selection
-            ViewModel.GoBackCommand.Execute(null);
+            _isFilePickerOpen = false;
         }
     }
 

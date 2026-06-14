@@ -49,6 +49,12 @@ public class AppSettings
     public bool ErrorIfDuplicateHash { get; set; }
 
     /// <summary>
+    /// When true, transactions whose FitId (external_id) already exists in Firefly III
+    /// for the target account are skipped during import to prevent duplicates.
+    /// </summary>
+    public bool SkipDuplicateTransactions { get; set; } = true;
+
+    /// <summary>
     /// Persisted result of the last successful connection test.
     /// When true, the app will auto-connect on startup using the saved credentials.
     /// </summary>

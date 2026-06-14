@@ -55,13 +55,45 @@
             <Grid Grid.Row="1">
 
                 <!-- ════════════════════════════════════════════════════════════
-                     Step 1: Account Selection
+                     Step 1: File Selection
+                     ════════════════════════════════════════════════════════════ -->
+                <StackPanel Spacing="12"
+                            Visibility="{x:Bind ViewModel.CurrentStep, Converter={StaticResource StepToVisibility}, ConverterParameter=FileSelection, Mode=OneWay}">
+                    <TextBlock Text="Select a QFX/OFX file"
+                               Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock Text="Choose a file to import. The account will be auto-detected if possible."
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                    <!-- Loading indicator (shown while parsing/loading accounts) -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                        <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                      Width="20" Height="20" />
+                        <TextBlock Text="Processing file…"
+                                   VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+
+                    <!-- Error message -->
+                    <InfoBar Severity="Error"
+                             Title="Error"
+                             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                             IsOpen="True"
+                             IsClosable="False"
+                             Visibility="{x:Bind ViewModel.ErrorMessage, Converter={StaticResource StringToVisibility}, Mode=OneWay}" />
+                </StackPanel>
+
+                <!-- ════════════════════════════════════════════════════════════
+                     Step 2: Account Selection (only if auto-match failed)
                      ════════════════════════════════════════════════════════════ -->
                 <StackPanel Spacing="12"
                             Visibility="{x:Bind ViewModel.CurrentStep, Converter={StaticResource StepToVisibility}, ConverterParameter=AccountSelection, Mode=OneWay}">
 
                     <TextBlock Text="Select an account"
                                Style="{StaticResource BodyStrongTextBlockStyle}" />
+
+                    <TextBlock Text="{x:Bind ViewModel.SelectedFileName, Mode=OneWay}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
                     <!-- Loading indicator -->
                     <StackPanel Orientation="Horizontal" Spacing="8"
@@ -99,23 +131,16 @@
                         </ListView.ItemTemplate>
                     </ListView>
 
-                    <!-- Next button -->
-                    <Button Content="Next"
-                            Command="{x:Bind ViewModel.ProceedToFileSelectionCommand}"
-                            IsEnabled="{x:Bind ViewModel.CanGoNext, Mode=OneWay}"
-                            Style="{StaticResource AccentButtonStyle}"
-                            HorizontalAlignment="Right" />
-                </StackPanel>
-
-                <!-- ════════════════════════════════════════════════════════════
-                     Step 2: File Selection (placeholder)
-                     ════════════════════════════════════════════════════════════ -->
-                <StackPanel Spacing="12"
-                            Visibility="{x:Bind ViewModel.CurrentStep, Converter={StaticResource StepToVisibility}, ConverterParameter=FileSelection, Mode=OneWay}">
-                    <TextBlock Text="File Selection"
-                               Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <TextBlock Text="Select a QFX file to import."
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <!-- Back and Next buttons -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                HorizontalAlignment="Right">
+                        <Button Content="Back"
+                                Command="{x:Bind ViewModel.GoBackCommand}" />
+                        <Button Content="Next"
+                                Command="{x:Bind ViewModel.ProceedToTransactionPreviewCommand}"
+                                IsEnabled="{x:Bind ViewModel.CanGoNext, Mode=OneWay}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- ════════════════════════════════════════════════════════════
@@ -254,6 +279,13 @@
                             <Run Text="{x:Bind ViewModel.ImportedCount, Mode=OneWay}" FontWeight="SemiBold" />
                             <Run Text=" transactions" />
                         </TextBlock>
+                        <TextBlock HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Visibility="{x:Bind ViewModel.SkippedCount, Converter={StaticResource IntToVisibility}, Mode=OneWay}">
+                            <Run Text="{x:Bind ViewModel.SkippedCount, Mode=OneWay}" />
+                            <Run Text=" duplicate(s) skipped" />
+                        </TextBlock>
                     </StackPanel>
 
                     <!-- Partial failure message (shown when FailedCount > 0) -->
@@ -272,6 +304,13 @@
                             <Run Text=" transactions. " />
                             <Run Text="{x:Bind ViewModel.FailedCount, Mode=OneWay}" FontWeight="SemiBold" />
                             <Run Text=" failed." />
+                        </TextBlock>
+                        <TextBlock HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Visibility="{x:Bind ViewModel.SkippedCount, Converter={StaticResource IntToVisibility}, Mode=OneWay}">
+                            <Run Text="{x:Bind ViewModel.SkippedCount, Mode=OneWay}" />
+                            <Run Text=" duplicate(s) skipped" />
                         </TextBlock>
                     </StackPanel>
 

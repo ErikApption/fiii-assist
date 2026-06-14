@@ -37,11 +37,11 @@ public class ImportWizardViewModelPropertyTests : IDisposable
     private ImportWizardViewModel CreateViewModel() =>
         new(_fireflyService, _settingsService);
 
-    private static AccountRead CreateAccount(string id, string name) => new()
+    private static AccountRead CreateAccount(string id, string name, string? accountNumber = null) => new()
     {
         Id = id,
         Type = "accounts",
-        Attributes = new AccountProperties { Name = name }
+        Attributes = new AccountProperties { Name = name, Account_number = accountNumber ?? string.Empty }
     };
 
     private static AccountArray CreateAccountArray(params AccountRead[] accounts)
@@ -168,11 +168,11 @@ NEWFILEUID:NONE
 
     /// <summary>
     /// For any valid pre-condition (wizard is Closed, service is connected),
-    /// calling OpenWizardAsync transitions CurrentStep to AccountSelection.
+    /// calling OpenWizard transitions CurrentStep to FileSelection.
     /// </summary>
     [Property(MaxTest = 100)]
     [Trait("Feature", "qfx-import-wizard")]
-    public async Task<bool> Property2_OpeningWizardTransitionsToAccountSelection(PositiveInt accountCount)
+    public bool Property2_OpeningWizardTransitionsToFileSelection(PositiveInt accountCount)
     {
         // Generate between 1 and the given count of accounts
         var count = Math.Min(accountCount.Get, 20);
@@ -187,10 +187,10 @@ NEWFILEUID:NONE
         Assert.Equal(WizardStep.Closed, vm.CurrentStep);
 
         // Act
-        await vm.OpenWizardCommand.ExecuteAsync(null);
+        vm.OpenWizardCommand.Execute(null);
 
-        // Post-condition: CurrentStep is AccountSelection
-        return vm.CurrentStep == WizardStep.AccountSelection;
+        // Post-condition: CurrentStep is FileSelection
+        return vm.CurrentStep == WizardStep.FileSelection;
     }
 
     // ── Property 3: All fetched accounts are exposed in the collection ────────
@@ -198,7 +198,7 @@ NEWFILEUID:NONE
 
     /// <summary>
     /// For any non-empty list of accounts returned by the service, the Accounts collection
-    /// contains every account with no omissions or duplicates.
+    /// contains every account with no omissions or duplicates after file selection.
     /// </summary>
     [Property(MaxTest = 100)]
     [Trait("Feature", "qfx-import-wizard")]
@@ -212,16 +212,29 @@ NEWFILEUID:NONE
         SetupAccountsReturn(accounts);
         var vm = CreateViewModel();
 
-        await vm.OpenWizardCommand.ExecuteAsync(null);
+        // Accounts are loaded during FileSelectedAsync
+        var txData = new List<(DateOnly, decimal, string)>
+        {
+            (DateOnly.FromDateTime(DateTime.Today), -10.00m, "Test")
+        };
+        var filePath = CreateTempQfxFile(txData);
+        try
+        {
+            await vm.FileSelectedAsync(filePath);
 
-        // All accounts present (no omissions)
-        var allPresent = accounts.All(a => vm.Accounts.Any(va => va.Id == a.Id));
-        // No duplicates
-        var noDuplicates = vm.Accounts.Select(a => a.Id).Distinct().Count() == vm.Accounts.Count;
-        // Same count
-        var sameCount = vm.Accounts.Count == accounts.Length;
+            // All accounts present (no omissions)
+            var allPresent = accounts.All(a => vm.Accounts.Any(va => va.Id == a.Id));
+            // No duplicates
+            var noDuplicates = vm.Accounts.Select(a => a.Id).Distinct().Count() == vm.Accounts.Count;
+            // Same count
+            var sameCount = vm.Accounts.Count == accounts.Length;
 
-        return allPresent && noDuplicates && sameCount;
+            return allPresent && noDuplicates && sameCount;
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
     }
 
     // ── Property 4: DefaultAccountId pre-selects the matching account ─────────
@@ -229,7 +242,7 @@ NEWFILEUID:NONE
 
     /// <summary>
     /// For any list of accounts and any DefaultAccountId that matches an account ID,
-    /// SelectedAccount equals that account after loading.
+    /// SelectedAccount equals that account after loading accounts (triggered by file selection).
     /// </summary>
     [Property(MaxTest = 100)]
     [Trait("Feature", "qfx-import-wizard")]
@@ -250,9 +263,24 @@ NEWFILEUID:NONE
         _settingsService.Save(new AppSettings { DefaultAccountId = defaultAccountId });
 
         var vm = CreateViewModel();
-        await vm.OpenWizardCommand.ExecuteAsync(null);
 
-        return vm.SelectedAccount != null && vm.SelectedAccount.Id == defaultAccountId;
+        // Accounts are loaded during FileSelectedAsync — use a file without matching ACCTID
+        var txData = new List<(DateOnly, decimal, string)>
+        {
+            (DateOnly.FromDateTime(DateTime.Today), -10.00m, "Test")
+        };
+        var filePath = CreateTempQfxFile(txData);
+        try
+        {
+            await vm.FileSelectedAsync(filePath);
+            // File has ACCTID 987654321 which won't match, so we end up at AccountSelection
+            // with DefaultAccountId pre-selected
+            return vm.SelectedAccount != null && vm.SelectedAccount.Id == defaultAccountId;
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
     }
 
     // ── Property 5: CanGoNext requires exactly one selected account ───────────
@@ -275,15 +303,32 @@ NEWFILEUID:NONE
 
         SetupAccountsReturn(accounts);
         var vm = CreateViewModel();
-        await vm.OpenWizardCommand.ExecuteAsync(null);
 
-        if (selectAccount && accounts.Length > 0)
+        // Trigger FileSelectedAsync to get to AccountSelection (ACCTID won't match)
+        var txData = new List<(DateOnly, decimal, string)>
         {
-            vm.SelectAccountCommand.Execute(accounts[0]);
-        }
+            (DateOnly.FromDateTime(DateTime.Today), -10.00m, "Test")
+        };
+        var filePath = CreateTempQfxFile(txData);
+        try
+        {
+            await vm.FileSelectedAsync(filePath);
+            // Should be at AccountSelection since no ACCTID match
+            if (vm.CurrentStep != WizardStep.AccountSelection)
+                return true; // Skip if auto-matched (shouldn't happen since ACCTID 987654321 doesn't match)
 
-        // CanGoNext should be true iff SelectedAccount is not null
-        return vm.CanGoNext == (vm.SelectedAccount != null);
+            if (selectAccount && accounts.Length > 0)
+            {
+                vm.SelectAccountCommand.Execute(accounts[0]);
+            }
+
+            // CanGoNext should be true iff SelectedAccount is not null
+            return vm.CanGoNext == (vm.SelectedAccount != null);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
     }
 
     // ── Property 6: Backward navigation preserves the selected account ────────
@@ -304,17 +349,8 @@ NEWFILEUID:NONE
         _settingsService.Save(new AppSettings { DefaultAccountId = string.Empty });
         SetupAccountsReturn(accounts);
         var vm = CreateViewModel();
-        await vm.OpenWizardCommand.ExecuteAsync(null);
 
-        // Select an account
-        var selectedAccount = accounts[0];
-        vm.SelectAccountCommand.Execute(selectedAccount);
-        Assert.Equal(selectedAccount, vm.SelectedAccount);
-
-        // Proceed to file selection
-        vm.ProceedToFileSelectionCommand.Execute(null);
-
-        // Create a temp file and parse it to get to TransactionPreview
+        // Create a temp file and parse it — ACCTID won't match so we get AccountSelection
         var txData = new List<(DateOnly, decimal, string)>
         {
             (DateOnly.FromDateTime(DateTime.Today), -25.00m, "Test Payee")
@@ -322,7 +358,16 @@ NEWFILEUID:NONE
         var filePath = CreateTempQfxFile(txData);
         try
         {
-            vm.FileSelected(filePath);
+            await vm.FileSelectedAsync(filePath);
+            Assert.Equal(WizardStep.AccountSelection, vm.CurrentStep);
+
+            // Select an account
+            var selectedAccount = accounts[0];
+            vm.SelectAccountCommand.Execute(selectedAccount);
+            Assert.Equal(selectedAccount, vm.SelectedAccount);
+
+            // Proceed to TransactionPreview
+            vm.ProceedToTransactionPreviewCommand.Execute(null);
             Assert.Equal(WizardStep.TransactionPreview, vm.CurrentStep);
 
             // Navigate backward
@@ -346,7 +391,7 @@ NEWFILEUID:NONE
     /// </summary>
     [Property(MaxTest = 100)]
     [Trait("Feature", "qfx-import-wizard")]
-    public bool Property7_TransactionCountEqualsCollectionSize(PositiveInt txCount)
+    public async Task<bool> Property7_TransactionCountEqualsCollectionSize(PositiveInt txCount)
     {
         var count = Math.Min(txCount.Get, 30);
         var transactions = Enumerable.Range(1, count)
@@ -361,7 +406,7 @@ NEWFILEUID:NONE
         try
         {
             var vm = CreateViewModel();
-            vm.FileSelected(filePath);
+            await vm.FileSelectedAsync(filePath);
 
             return vm.TransactionCount == vm.Transactions.Count &&
                    vm.TransactionCount == count;
@@ -381,7 +426,7 @@ NEWFILEUID:NONE
     /// </summary>
     [Property(MaxTest = 100)]
     [Trait("Feature", "qfx-import-wizard")]
-    public bool Property8_TransactionsOrderedByDateDescending(PositiveInt txCount)
+    public async Task<bool> Property8_TransactionsOrderedByDateDescending(PositiveInt txCount)
     {
         var count = Math.Max(2, Math.Min(txCount.Get, 30));
 
@@ -399,7 +444,7 @@ NEWFILEUID:NONE
         try
         {
             var vm = CreateViewModel();
-            vm.FileSelected(filePath);
+            await vm.FileSelectedAsync(filePath);
 
             if (vm.Transactions.Count < 2)
                 return true; // vacuously true
@@ -422,8 +467,8 @@ NEWFILEUID:NONE
 
     /// <summary>
     /// For any wizard step:
-    /// - CanGoBack is true only on TransactionPreview
-    /// - CanGoBack is false on Importing/Results
+    /// - CanGoBack is true on TransactionPreview and AccountSelection (after file selection)
+    /// - CanGoBack is false on FileSelection, Importing, and Results
     /// </summary>
     [Property(MaxTest = 100)]
     [Trait("Feature", "qfx-import-wizard")]
@@ -449,18 +494,12 @@ NEWFILEUID:NONE
         // Step: Closed
         if (vm.CanGoBack) return false;
 
-        // Step: AccountSelection
-        await vm.OpenWizardCommand.ExecuteAsync(null);
-        if (vm.CanGoBack) return false; // CanGoBack should be false on AccountSelection
+        // Step: FileSelection (via OpenWizard)
+        vm.OpenWizardCommand.Execute(null);
+        if (vm.CurrentStep != WizardStep.FileSelection) return false;
+        if (vm.CanGoBack) return false; // CanGoBack should be false on FileSelection
 
-        // Select account and proceed
-        vm.SelectAccountCommand.Execute(accounts[0]);
-        vm.ProceedToFileSelectionCommand.Execute(null);
-
-        // Step: FileSelection - CanGoBack should be false
-        if (vm.CanGoBack) return false;
-
-        // Parse a file to get to TransactionPreview
+        // Parse a file to get to AccountSelection (no ACCTID match)
         var txData = new List<(DateOnly, decimal, string)>
         {
             (DateOnly.FromDateTime(DateTime.Today), -15.00m, "Test")
@@ -468,7 +507,15 @@ NEWFILEUID:NONE
         var filePath = CreateTempQfxFile(txData);
         try
         {
-            vm.FileSelected(filePath);
+            await vm.FileSelectedAsync(filePath);
+
+            // Step: AccountSelection - CanGoBack should be true (can go back to FileSelection)
+            if (vm.CurrentStep != WizardStep.AccountSelection) return false;
+            if (!vm.CanGoBack) return false;
+
+            // Select account and proceed to TransactionPreview
+            vm.SelectAccountCommand.Execute(accounts[0]);
+            vm.ProceedToTransactionPreviewCommand.Execute(null);
 
             // Step: TransactionPreview - CanGoBack should be true
             if (vm.CurrentStep != WizardStep.TransactionPreview) return false;
@@ -506,9 +553,6 @@ NEWFILEUID:NONE
         SetupAccountsReturn(accounts);
 
         var vm = CreateViewModel();
-        await vm.OpenWizardCommand.ExecuteAsync(null);
-        vm.SelectAccountCommand.Execute(accounts[0]);
-        vm.ProceedToFileSelectionCommand.Execute(null);
 
         var transactions = Enumerable.Range(1, count)
             .Select(i => (
@@ -521,7 +565,10 @@ NEWFILEUID:NONE
         var filePath = CreateTempQfxFile(transactions);
         try
         {
-            vm.FileSelected(filePath);
+            await vm.FileSelectedAsync(filePath);
+            // No ACCTID match → AccountSelection
+            vm.SelectAccountCommand.Execute(accounts[0]);
+            vm.ProceedToTransactionPreviewCommand.Execute(null);
 
             // Use the failSeed to determine which transactions fail
             var rng = new Random(failSeed);

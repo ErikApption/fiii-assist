@@ -52,6 +52,11 @@ var errorOnDuplicateOption = new Option<bool>(
     description: "Treat duplicate transaction hashes as errors",
     getDefaultValue: () => false);
 
+var importRulesOption = new Option<bool>(
+    name: "--import-rules",
+    description: "Import Actual Budget payee/category rules into Firefly III",
+    getDefaultValue: () => false);
+
 rootCommand.AddOption(dbOption);
 rootCommand.AddOption(serverOption);
 rootCommand.AddOption(tokenOption);
@@ -59,6 +64,7 @@ rootCommand.AddOption(accountMapOption);
 rootCommand.AddOption(ignoreSslOption);
 rootCommand.AddOption(dryRunOption);
 rootCommand.AddOption(errorOnDuplicateOption);
+rootCommand.AddOption(importRulesOption);
 
 rootCommand.SetHandler(async (context) =>
 {
@@ -77,6 +83,7 @@ rootCommand.SetHandler(async (context) =>
     var ignoreSsl = context.ParseResult.GetValueForOption(ignoreSslOption);
     var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
     var errorOnDuplicate = context.ParseResult.GetValueForOption(errorOnDuplicateOption);
+    var importRules = context.ParseResult.GetValueForOption(importRulesOption);
 
     Console.WriteLine($"Opening Actual Budget database: {db.FullName}");
     Console.WriteLine();
@@ -261,6 +268,18 @@ rootCommand.SetHandler(async (context) =>
         Console.WriteLine($"Skipped {skippedAccounts} already-completed account(s) (delete {Path.GetFileName(progressPath)} to re-import all).");
 
     Console.WriteLine($"Done. Total transactions imported: {totalImported}, errors: {errorCount}");
+
+    // ── Rule import ───────────────────────────────────────────────────────────
+    if (importRules)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Importing rules...");
+
+        var ruleImporter = new ActualRuleImporter(reader.Connection, fireflyService.Client!);
+        var (rulesCreated, rulesSkipped) = await ruleImporter.ImportRulesAsync();
+
+        Console.WriteLine($"Rules done. Created: {rulesCreated}, skipped: {rulesSkipped}");
+    }
 });
 
 return await rootCommand.InvokeAsync(args);

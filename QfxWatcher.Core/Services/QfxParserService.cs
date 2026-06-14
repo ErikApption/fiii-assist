@@ -23,6 +23,66 @@ public static class QfxParserService
     }
 
     /// <summary>
+    /// Extracts the account ID (ACCTID) from the BANKACCTFROM element in the statement header.
+    /// This is the account the QFX file belongs to (the source account at the bank).
+    /// Returns empty string if not found.
+    /// </summary>
+    public static string ExtractAccountId(string filePath)
+    {
+        var text = File.ReadAllText(filePath);
+        return ExtractAccountIdFromContent(text);
+    }
+
+    /// <summary>
+    /// Extracts the account ID (ACCTID) from raw OFX/QFX content.
+    /// Looks in the BANKACCTFROM block within STMTRS (statement response).
+    /// </summary>
+    public static string ExtractAccountIdFromContent(string content)
+    {
+        // Look for BANKACCTFROM inside STMTRS (not inside individual STMTTRN blocks)
+        // SGML style: <STMTRS>...<BANKACCTFROM>...<ACCTID>12345...
+        // XML style:  <STMTRS>...<BANKACCTFROM><ACCTID>12345</ACCTID>...
+
+        // Find STMTRS block first to avoid picking up BANKACCTFROM from transactions
+        var stmtrsPattern = new Regex(
+            @"<STMTRS>(.*?)<BANKTRANLIST>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        var stmtrsMatch = stmtrsPattern.Match(content);
+
+        string searchArea;
+        if (stmtrsMatch.Success)
+        {
+            searchArea = stmtrsMatch.Groups[1].Value;
+        }
+        else
+        {
+            // Fallback: look for BANKACCTFROM anywhere before the first STMTTRN
+            var firstTrn = content.IndexOf("<STMTTRN>", StringComparison.OrdinalIgnoreCase);
+            searchArea = firstTrn > 0 ? content[..firstTrn] : content;
+        }
+
+        // Try SGML-style extraction
+        var sgmlPattern = new Regex(@"<BANKACCTFROM>(.*?)(?:</BANKACCTFROM>|<BANKTRANLIST>|<STMTTRN>)",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        var match = sgmlPattern.Match(searchArea);
+        if (match.Success)
+        {
+            var block = match.Groups[1].Value;
+            // Try XML-style tag first
+            var xmlAcctId = Regex.Match(block, @"<ACCTID>\s*(.*?)\s*</ACCTID>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            if (xmlAcctId.Success)
+                return xmlAcctId.Groups[1].Value.Trim();
+
+            // SGML-style tag
+            var sgmlAcctId = Regex.Match(block, @"<ACCTID>\s*([^\r\n<]+)", RegexOptions.IgnoreCase);
+            if (sgmlAcctId.Success)
+                return sgmlAcctId.Groups[1].Value.Trim();
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
     /// Parses raw OFX/QFX content.
     /// </summary>
     public static IReadOnlyList<FIIITransaction> Parse(string content)

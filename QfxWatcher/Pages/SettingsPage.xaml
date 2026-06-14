@@ -121,6 +121,10 @@
                         IsOn="{x:Bind ViewModel.ArchiveAfterImport, Mode=TwoWay}" />
 
                     <ToggleSwitch
+                        Header="Skip duplicate transactions (by FitId)"
+                        IsOn="{x:Bind ViewModel.SkipDuplicateTransactions, Mode=TwoWay}" />
+
+                    <ToggleSwitch
                         Header="Error if duplicate transaction detected"
                         IsOn="{x:Bind ViewModel.ErrorIfDuplicateHash, Mode=TwoWay}" />
 

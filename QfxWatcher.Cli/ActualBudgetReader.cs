@@ -12,6 +12,11 @@ public sealed class ActualBudgetReader : IDisposable
 {
     private readonly SqliteConnection _connection;
 
+    /// <summary>
+    /// Exposes the underlying connection for use by other readers (e.g. rule import).
+    /// </summary>
+    public SqliteConnection Connection => _connection;
+
     public ActualBudgetReader(string dbPath)
     {
         if (!File.Exists(dbPath))

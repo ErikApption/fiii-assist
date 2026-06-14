@@ -39,6 +39,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _errorIfDuplicateHash;
 
     [ObservableProperty]
+    private bool _skipDuplicateTransactions = true;
+
+    [ObservableProperty]
     private bool _lastConnectionSuccessful;
 
     [ObservableProperty]
@@ -95,6 +98,7 @@ public partial class SettingsViewModel : ObservableObject
         nameof(DefaultAccountId) or
         nameof(IgnoreSslCertificateValidation) or
         nameof(ErrorIfDuplicateHash) or
+        nameof(SkipDuplicateTransactions) or
         nameof(LastConnectionSuccessful);
 
     // ── Commands ──────────────────────────────────────────────────────────────
@@ -114,6 +118,7 @@ public partial class SettingsViewModel : ObservableObject
             DefaultAccountId              = cfg.DefaultAccountId;
             IgnoreSslCertificateValidation = cfg.IgnoreSslCertificateValidation;
             ErrorIfDuplicateHash = cfg.ErrorIfDuplicateHash;
+            SkipDuplicateTransactions = cfg.SkipDuplicateTransactions;
             LastConnectionSuccessful = cfg.LastConnectionSuccessful;
             DetectedFolder                 = FileWatcherService.DetectEdgeDownloadsFolder();
         }
@@ -136,6 +141,7 @@ public partial class SettingsViewModel : ObservableObject
             DefaultAccountId              = DefaultAccountId,
             IgnoreSslCertificateValidation = IgnoreSslCertificateValidation,
             ErrorIfDuplicateHash = ErrorIfDuplicateHash,
+            SkipDuplicateTransactions = SkipDuplicateTransactions,
             LastConnectionSuccessful = LastConnectionSuccessful,
         });
     }

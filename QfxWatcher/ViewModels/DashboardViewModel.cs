@@ -194,14 +194,40 @@ public partial class DashboardViewModel : ObservableObject
                 : accountId;
 
             int added = 0;
+            int skipped = 0;
             if (!string.IsNullOrWhiteSpace(targetId) && IsConnected)
-                added = await _budget.ImportTransactionsAsync(targetId, transactions, cfg.ErrorIfDuplicateHash);
+            {
+                // Skip duplicates if enabled
+                IReadOnlyList<FIIITransaction> toImport = transactions;
+                if (cfg.SkipDuplicateTransactions && transactions.Count > 0)
+                {
+                    try
+                    {
+                        var dates = transactions.Select(t => t.Date).ToList();
+                        var existingIds = await _budget.GetExistingExternalIdsAsync(
+                            targetId, dates.Min(), dates.Max());
+
+                        var filtered = transactions
+                            .Where(t => string.IsNullOrWhiteSpace(t.FitId) || !existingIds.Contains(t.FitId))
+                            .ToList();
+                        skipped = transactions.Count - filtered.Count;
+                        toImport = filtered;
+                    }
+                    catch
+                    {
+                        // If lookup fails, import all — server-side dedup still applies
+                    }
+                }
+
+                added = await _budget.ImportTransactionsAsync(targetId, toImport, cfg.ErrorIfDuplicateHash);
+            }
 
             var entry = new ImportLogEntry
             {
                 FileName         = Path.GetFileName(filePath),
                 AccountName      = accountName,
                 TransactionCount = added > 0 ? added : transactions.Count,
+                SkippedCount     = skipped,
                 Success          = true,
             };
             LogEntries.Insert(0, entry);
