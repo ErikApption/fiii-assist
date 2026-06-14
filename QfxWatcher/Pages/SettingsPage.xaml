@@ -32,7 +32,7 @@
                         x:Name="TokenBox"
                         Header="Personal Access Token"
                         PlaceholderText="Enter your Firefly III Personal Access Token"
-                        Password="{x:Bind ViewModel.ServerToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        PasswordChanged="TokenBox_PasswordChanged" />
 
                     <ToggleSwitch
                         Header="Ignore SSL certificate validation"

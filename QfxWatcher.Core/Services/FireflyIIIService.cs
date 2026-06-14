@@ -704,6 +704,7 @@ public sealed class FireflyIIIService : IDisposable
 
     /// <summary>
     /// Attempts to match an account by name (direct search against known accounts).
+    /// Applies spelling normalization to handle regional variants (e.g. Chequing/Checking).
     /// </summary>
     private static string? TryMatchAccountByName(string name, IReadOnlyList<AccountSingle> accounts)
     {
@@ -720,7 +721,42 @@ public sealed class FireflyIIIService : IDisposable
         matched ??= accounts.FirstOrDefault(a =>
             a.Data?.Attributes?.Name?.Contains(trimmed, StringComparison.OrdinalIgnoreCase) == true);
 
+        // Reverse contains match (e.g. "Tangerine Chequing Account" contains account name "Tangerine Chequing")
+        matched ??= accounts.FirstOrDefault(a =>
+            !string.IsNullOrWhiteSpace(a.Data?.Attributes?.Name) &&
+            trimmed.Contains(a.Data.Attributes.Name, StringComparison.OrdinalIgnoreCase));
+
+        // Normalized match: handle regional spelling variants (Chequing/Checking, Honour/Honor, etc.)
+        if (matched == null)
+        {
+            var normalizedSearch = NormalizeAccountName(trimmed);
+            matched = accounts.FirstOrDefault(a =>
+            {
+                var acctName = a.Data?.Attributes?.Name;
+                if (string.IsNullOrWhiteSpace(acctName)) return false;
+                var normalizedAcct = NormalizeAccountName(acctName);
+                return string.Equals(normalizedAcct, normalizedSearch, StringComparison.OrdinalIgnoreCase)
+                    || normalizedAcct.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase)
+                    || normalizedSearch.Contains(normalizedAcct, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
         return matched?.Data?.Id;
+    }
+
+    /// <summary>
+    /// Normalizes an account name by replacing regional spelling variants with a canonical form.
+    /// Canadian banks use "Chequing" while Firefly III users may use "Checking", etc.
+    /// </summary>
+    private static string NormalizeAccountName(string name)
+    {
+        // Replace Canadian/British spelling variants with American equivalents for comparison
+        var normalized = name;
+        normalized = Regex.Replace(normalized, @"\bChequing\b", "Checking", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"\bCheque\b", "Check", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"\bSavings\b", "Saving", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, @"\bSaving\b", "Saving", RegexOptions.IgnoreCase);
+        return normalized;
     }
 
     /// <summary>

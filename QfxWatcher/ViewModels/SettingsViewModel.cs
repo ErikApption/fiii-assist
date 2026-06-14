@@ -13,6 +13,12 @@ public partial class SettingsViewModel : ObservableObject
     private readonly FireflyIIIService _budget;
     private readonly FileWatcherService  _watcher;
     private bool _isLoading;
+    private bool _hasInitialized;
+
+    // Stores the last successfully loaded values so we can detect if a binding
+    // initialization is attempting to blank out saved credentials.
+    private string _loadedServerUrl = string.Empty;
+    private string _loadedServerToken = string.Empty;
 
     [ObservableProperty]
     private string _serverUrl = string.Empty;
@@ -81,10 +87,14 @@ public partial class SettingsViewModel : ObservableObject
 
         Load();
 
-        // Auto-persist whenever a user-editable property changes
+        // Auto-persist whenever a user-editable property changes.
+        // The _isLoading guard prevents save during Load(), and the
+        // _hasInitialized guard prevents saves from XAML binding initialization
+        // that can push empty values before the UI is fully ready.
+        _hasInitialized = true;
         PropertyChanged += (_, e) =>
         {
-            if (!_isLoading && IsPersistedProperty(e.PropertyName))
+            if (!_isLoading && _hasInitialized && IsPersistedProperty(e.PropertyName))
                 Save();
         };
     }
@@ -121,6 +131,9 @@ public partial class SettingsViewModel : ObservableObject
             SkipDuplicateTransactions = cfg.SkipDuplicateTransactions;
             LastConnectionSuccessful = cfg.LastConnectionSuccessful;
             DetectedFolder                 = FileWatcherService.DetectEdgeDownloadsFolder();
+
+            _loadedServerUrl   = cfg.ServerUrl;
+            _loadedServerToken = cfg.ServerToken;
         }
         finally
         {
@@ -131,10 +144,20 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     public void Save()
     {
+        // Guard: if ServerUrl or ServerToken have been blanked but were previously
+        // loaded with values, this is likely a XAML binding initialization artifact.
+        // Use the loaded values instead to prevent data loss.
+        var urlToSave   = string.IsNullOrWhiteSpace(ServerUrl) && !string.IsNullOrWhiteSpace(_loadedServerUrl)
+            ? _loadedServerUrl
+            : ServerUrl.Trim();
+        var tokenToSave = string.IsNullOrWhiteSpace(ServerToken) && !string.IsNullOrWhiteSpace(_loadedServerToken)
+            ? _loadedServerToken
+            : ServerToken;
+
         _settings.Save(new AppSettings
         {
-            ServerUrl           = ServerUrl.Trim(),
-            ServerToken         = ServerToken,
+            ServerUrl           = urlToSave,
+            ServerToken         = tokenToSave,
             WatchFolder         = WatchFolder.Trim(),
             ArchiveAfterImport  = ArchiveAfterImport,
             ConfirmBeforeImport = ConfirmBeforeImport,
@@ -144,6 +167,10 @@ public partial class SettingsViewModel : ObservableObject
             SkipDuplicateTransactions = SkipDuplicateTransactions,
             LastConnectionSuccessful = LastConnectionSuccessful,
         });
+
+        // Update loaded values to reflect the save
+        _loadedServerUrl   = urlToSave;
+        _loadedServerToken = tokenToSave;
     }
 
     [RelayCommand]

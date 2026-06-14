@@ -82,9 +82,10 @@ public sealed partial class DashboardPage : Page
 
         var accountCombo = new ComboBox
         {
-            Header          = "Import into account",
-            PlaceholderText = "Select an account…",
+            Header            = "Import into account",
+            PlaceholderText   = "Select an account…",
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            DisplayMemberPath = "Name",
         };
 
         if (accounts.Count > 0)
