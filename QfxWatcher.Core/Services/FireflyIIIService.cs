@@ -299,6 +299,23 @@ public sealed class FireflyIIIService : IDisposable
     {
         var added = 0;
 
+        // Pre-fetch existing transfers for this account to detect duplicates across import sources.
+        // Different sources (QFX vs Actual Budget) use different external_ids for the same real
+        // transaction, so we need to match by date + amount + opposing account.
+        HashSet<string>? existingTransferKeys = null;
+        if (transactions.Count > 0)
+        {
+            try
+            {
+                var dates = transactions.Select(t => t.Date).ToList();
+                existingTransferKeys = await GetExistingTransferKeysAsync(accountId, dates.Min(), dates.Max());
+            }
+            catch
+            {
+                // If lookup fails, proceed without transfer dedup — server-side hash dedup still applies
+            }
+        }
+
         foreach (var tx in transactions)
         {
             var isDeposit = tx.Amount >= 0m;
@@ -314,6 +331,39 @@ public sealed class FireflyIIIService : IDisposable
             // Determine opposing account and transaction type
             var (transactionType, sourceName, sourceId, destinationName, destinationId) =
                 ResolveTransactionMapping(tx, accountId, accounts, isDeposit);
+
+            // Skip duplicate transfers: if an existing transfer with the same date, amount,
+            // and opposing account already exists, don't create another one.
+            // This prevents duplicates when the same movement is imported from different sources
+            // (e.g. QFX bank file and Actual Budget export) which have different external_ids.
+            // Also handles the case where we submit a Withdrawal but Firefly III will auto-promote
+            // it to a Transfer (because destination_name matches a known asset account).
+            if (existingTransferKeys != null)
+            {
+                string? opposingId = null;
+                if (transactionType == TransactionTypeProperty.Transfer)
+                {
+                    opposingId = isDeposit ? sourceId : destinationId;
+                }
+                else
+                {
+                    // Even for withdrawals/deposits, Firefly III may auto-promote to Transfer
+                    // if the opposing name matches an asset account. Check for that.
+                    var nameToCheck = isDeposit ? sourceName : destinationName;
+                    if (!string.IsNullOrWhiteSpace(nameToCheck))
+                        opposingId = TryMatchAccountByName(nameToCheck, accounts);
+                }
+
+                if (!string.IsNullOrWhiteSpace(opposingId))
+                {
+                    var key = BuildTransferKey(tx.Date, Math.Abs(tx.Amount), opposingId);
+                    if (existingTransferKeys.Contains(key))
+                    {
+                        // Transfer already exists — skip to avoid duplicate
+                        continue;
+                    }
+                }
+            }
 
             var split = new TransactionSplitStore
             {
@@ -355,6 +405,77 @@ public sealed class FireflyIIIService : IDisposable
         return added;
     }
 
+    /// <summary>
+    /// Builds a deduplication key for a transfer: date + absolute amount + opposing account ID.
+    /// </summary>
+    private static string BuildTransferKey(DateOnly date, decimal amount, string? opposingAccountId)
+    {
+        return $"{date:yyyyMMdd}|{amount:0.00}|{opposingAccountId ?? ""}";
+    }
+
+    /// <summary>
+    /// Fetches existing transfers for an account within the date range and returns
+    /// deduplication keys (date + amount + opposing account ID) for each.
+    /// </summary>
+    private async Task<HashSet<string>> GetExistingTransferKeysAsync(string accountId, DateOnly startDate, DateOnly endDate)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var start = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+        var end = new DateTimeOffset(endDate.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);
+
+        var page = 1;
+        const int pageSize = 100;
+
+        while (true)
+        {
+            var result = await _client!.ListTransactionByAccountAsync(
+                x_Trace_Id: null,
+                limit: pageSize,
+                page: page,
+                id: accountId,
+                start: start,
+                end: end,
+                type: TransactionTypeFilter.Transfer);
+
+            if (result?.Data == null || result.Data.Count == 0)
+                break;
+
+            foreach (var txGroup in result.Data)
+            {
+                if (txGroup?.Attributes?.Transactions == null)
+                    continue;
+
+                foreach (var split in txGroup.Attributes.Transactions)
+                {
+                    // Determine opposing account ID relative to our accountId
+                    string? opposingId = null;
+                    if (split.Source_id == accountId)
+                        opposingId = split.Destination_id;
+                    else if (split.Destination_id == accountId)
+                        opposingId = split.Source_id;
+
+                    if (opposingId == null)
+                        continue;
+
+                    var date = DateOnly.FromDateTime(split.Date.DateTime);
+                    var amount = decimal.TryParse(split.Amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var a)
+                        ? Math.Abs(a)
+                        : 0m;
+
+                    keys.Add(BuildTransferKey(date, amount, opposingId));
+                }
+            }
+
+            if (result.Data.Count < pageSize)
+                break;
+
+            page++;
+        }
+
+        return keys;
+    }
+
     // ── Transfer / account resolution ─────────────────────────────────────────
 
     /// <summary>
@@ -375,15 +496,10 @@ public sealed class FireflyIIIService : IDisposable
 
     /// <summary>
     /// Determines whether a transaction should be treated as a transfer.
-    /// Uses strong signals only to avoid false positives (e.g. EFT withdrawals to external
-    /// payees that happen to use transfer-like wording in the memo):
+    /// Uses multiple signals per the data-importer approach:
     /// 1. OFX TRNTYPE == "XFER" (standard OFX transfer type)
-    /// 2. BANKACCTTO/BANKACCTFROM account number present in the transaction
-    /// 
-    /// Memo matching alone is NOT sufficient — banks commonly use memos like "Funds Transfer"
-    /// or "Transfer" for regular EFT withdrawals/deposits to external parties. Relying on memo
-    /// would cause these to be incorrectly classified as inter-account transfers, resulting in
-    /// duplicate transactions when the same QFX also contains the actual XFER entry.
+    /// 2. Memo matches known transfer patterns (like data-importer "opposing-name" role detection)
+    /// 3. BANKACCTTO/BANKACCTFROM account number present in the transaction
     /// </summary>
     private static bool IsTransferTransaction(FIIITransaction tx)
     {
@@ -391,7 +507,11 @@ public sealed class FireflyIIIService : IDisposable
         if (string.Equals(tx.TransactionType?.Trim(), "XFER", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // Signal 2: Opposing account number is present (bank included BANKACCTTO/BANKACCTFROM)
+        // Signal 2: Memo matches known transfer patterns
+        if (!string.IsNullOrWhiteSpace(tx.Memo) && TransferMemoPattern.IsMatch(tx.Memo.Trim()))
+            return true;
+
+        // Signal 3: Opposing account number is present (bank included BANKACCTTO/BANKACCTFROM)
         if (!string.IsNullOrWhiteSpace(tx.OpposingAccountNumber))
             return true;
 
@@ -504,24 +624,6 @@ public sealed class FireflyIIIService : IDisposable
 
         // Per data-importer EmptyAccounts convention: if opposing name is empty, use "(no name)"
         opposingName ??= "(no name)";
-
-        // Guard: If the opposing name matches a known asset/liability account, Firefly III will
-        // silently promote the transaction to a Transfer (because both source and destination are
-        // asset accounts). This causes duplicates when the bank's QFX file also contains a separate
-        // XFER entry for the same movement. Since IsTransferTransaction() already returned false,
-        // we intentionally decided this is NOT a transfer — so avoid passing a name that would
-        // trigger Firefly III's auto-promotion. Use the full original memo instead, which Firefly III
-        // will treat as a new expense account name.
-        if (opposingName != "(no name)" && TryMatchAccountByName(opposingName, accounts) != null)
-        {
-            // Use the raw NAME field as the expense account name — it's descriptive enough
-            // (e.g. "EFT Withdrawal to Tangerine Fund") and won't match an asset account.
-            opposingName = !string.IsNullOrWhiteSpace(tx.Name) ? tx.Name : "(no name)";
-
-            // If even the NAME matches a known account, fall back to generic
-            if (TryMatchAccountByName(opposingName, accounts) != null)
-                opposingName = "(no name)";
-        }
 
         if (isDeposit)
         {

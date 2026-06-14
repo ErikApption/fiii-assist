@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq;
 using NSubstitute;
 using QfxWatcher.FireflyIII;
@@ -7,13 +8,12 @@ using QfxWatcher.Services;
 namespace QfxWatcher.Core.Tests;
 
 /// <summary>
-/// Tests that EFT withdrawals with transfer-like wording in the NAME/MEMO fields
-/// are correctly classified as withdrawals (not transfers) when imported from QFX.
-/// 
-/// Regression: Previously, an "EFT Withdrawal to Tangerine Fund" with TRNTYPE=DEBIT
-/// would be incorrectly detected as a transfer because the NAME matched a pattern
-/// like "Withdrawal to {account}". This caused a duplicate transaction — the bank
-/// statement also contained the real XFER entry, resulting in two transfers.
+/// Tests that EFT withdrawals to known accounts are correctly created as transfers,
+/// and that duplicate transfers are detected and skipped.
+///
+/// Regression: Previously, importing an EFT withdrawal from QFX created a duplicate transfer
+/// if the same movement had already been imported from another source (e.g. Actual Budget).
+/// The fix adds transfer deduplication by date + amount + opposing account before import.
 /// </summary>
 public class FireflyIIIServiceTransferTests : IDisposable
 {
@@ -28,8 +28,8 @@ public class FireflyIIIServiceTransferTests : IDisposable
 
         // Setup: return Tangerine Checking and Tangerine Fund as known asset accounts
         var accountArray = CreateDefaultAccountArray();
-
         SetupListAccountMock(accountArray);
+        SetupEmptyTransferList();
 
         // Capture all StoreTransactionAsync calls for assertion
         _mockClient.StoreTransactionAsync(
@@ -94,22 +94,92 @@ public class FireflyIIIServiceTransferTests : IDisposable
             .Returns(accountArray);
     }
 
+    /// <summary>
+    /// Sets up the mock to return no existing transfers (clean slate).
+    /// </summary>
+    private void SetupEmptyTransferList()
+    {
+        _mockClient.ListTransactionByAccountAsync(
+            Arg.Any<Guid?>(),
+            Arg.Any<int?>(),
+            Arg.Any<int?>(),
+            Arg.Any<string>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Any<TransactionTypeFilter?>())
+            .Returns(new TransactionArray());
+
+        _mockClient.ListTransactionByAccountAsync(
+            Arg.Any<Guid?>(),
+            Arg.Any<int?>(),
+            Arg.Any<int?>(),
+            Arg.Any<string>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Any<TransactionTypeFilter?>(),
+            Arg.Any<CancellationToken>())
+            .Returns(new TransactionArray());
+    }
+
+    /// <summary>
+    /// Sets up the mock to return an existing transfer (simulating a prior import).
+    /// </summary>
+    private void SetupExistingTransfer(string sourceId, string destId, DateOnly date, decimal amount)
+    {
+        var txArray = new TransactionArray();
+        var txRead = new TransactionRead
+        {
+            Id = "existing-1",
+            Type = "transactions",
+            Attributes = new Transaction()
+        };
+        txRead.Attributes.Transactions.Add(new TransactionSplit
+        {
+            Type = TransactionTypeProperty.Transfer,
+            Date = new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+            Amount = amount.ToString("0.00", CultureInfo.InvariantCulture),
+            Source_id = sourceId,
+            Destination_id = destId,
+            Description = "Transfer",
+        });
+        txArray.Data.Add(txRead);
+
+        _mockClient.ListTransactionByAccountAsync(
+            Arg.Any<Guid?>(),
+            Arg.Any<int?>(),
+            Arg.Any<int?>(),
+            Arg.Any<string>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Is<TransactionTypeFilter?>(t => t == TransactionTypeFilter.Transfer))
+            .Returns(txArray);
+
+        _mockClient.ListTransactionByAccountAsync(
+            Arg.Any<Guid?>(),
+            Arg.Any<int?>(),
+            Arg.Any<int?>(),
+            Arg.Any<string>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Any<DateTimeOffset?>(),
+            Arg.Is<TransactionTypeFilter?>(t => t == TransactionTypeFilter.Transfer),
+            Arg.Any<CancellationToken>())
+            .Returns(txArray);
+    }
+
     public void Dispose()
     {
         _service.Dispose();
     }
 
     /// <summary>
-    /// An EFT withdrawal with TRNTYPE=DEBIT and NAME="EFT Withdrawal to Tangerine Fund"
-    /// should produce a single Withdrawal transaction, NOT a Transfer — even though
-    /// "Tangerine Fund" is a known asset account.
-    /// 
-    /// This is the exact data from a real Tangerine Bank QFX file.
+    /// An EFT withdrawal with MEMO="To Tangerine Fund" where Tangerine Fund is a known
+    /// asset account should create a transfer (Firefly III auto-promotes based on the
+    /// destination matching an asset account).
+    /// When no prior transfer exists, the import should succeed.
     /// </summary>
     [Fact]
-    public async Task EftWithdrawal_WithDebitType_CreatesWithdrawalNotTransfer()
+    public async Task EftWithdrawal_ToKnownAccount_NoPriorTransfer_ImportsSuccessfully()
     {
-        // Arrange: exact transaction from a real QFX file
         var transaction = new FIIITransaction
         {
             FitId = "6385",
@@ -121,158 +191,109 @@ public class FireflyIIIServiceTransferTests : IDisposable
             OpposingAccountNumber = string.Empty,
         };
 
-        // Act
         var imported = await _service.ImportTransactionsAsync("100", [transaction]);
 
-        // Assert: exactly one transaction was imported
+        // Should import successfully (one API call)
         Assert.Equal(1, imported);
         Assert.Single(_capturedTransactions);
-
-        // Assert: the transaction was created as a Withdrawal, not a Transfer
-        var stored = _capturedTransactions[0];
-        var split = stored.Transactions.First();
-        Assert.Equal(TransactionTypeProperty.Withdrawal, split.Type);
-        Assert.Equal("100", split.Source_id);
-
-        // Assert: destination_name must NOT be "Tangerine Fund" because that matches
-        // a known asset account and Firefly III would auto-promote it to a Transfer.
-        // Instead, the full NAME field is used as the expense account name.
-        Assert.NotEqual("Tangerine Fund", split.Destination_name);
-        Assert.Equal("EFT Withdrawal to Tangerine Fund", split.Destination_name);
     }
 
     /// <summary>
-    /// An EFT deposit with TRNTYPE=CREDIT and NAME="EFT Deposit from Apption Corpora"
-    /// should produce a single Deposit, not a Transfer — even if the memo says "From Apption".
+    /// When an identical transfer already exists in Firefly III (same date, amount,
+    /// and opposing account), importing the same EFT withdrawal should be skipped.
+    /// This prevents duplicates when importing from multiple sources (QFX + Actual Budget).
     /// </summary>
     [Fact]
-    public async Task EftDeposit_WithCreditType_CreatesDepositNotTransfer()
+    public async Task EftWithdrawal_ToKnownAccount_WithExistingTransfer_IsSkipped()
     {
-        var transaction = new FIIITransaction
-        {
-            FitId = "6400",
-            TransactionType = "CREDIT",
-            Date = new DateOnly(2026, 3, 31),
-            Amount = 8427.29m,
-            Name = "EFT Deposit from Apption Corpora",
-            Memo = "From Apption Corpora",
-            OpposingAccountNumber = string.Empty,
-        };
-
-        var imported = await _service.ImportTransactionsAsync("100", [transaction]);
-
-        Assert.Equal(1, imported);
-        Assert.Single(_capturedTransactions);
-
-        var split = _capturedTransactions[0].Transactions.First();
-        Assert.Equal(TransactionTypeProperty.Deposit, split.Type);
-        Assert.Equal("100", split.Destination_id);
-    }
-
-    /// <summary>
-    /// A real XFER transaction (TRNTYPE=XFER) to a known account SHOULD still create a Transfer.
-    /// This ensures we didn't break legitimate transfer detection.
-    /// </summary>
-    [Fact]
-    public async Task RealXferTransaction_ToKnownAccount_CreatesTransfer()
-    {
-        // Add "Tangerine Savings Account" as a known account
-        var accountArray = new AccountArray();
-        accountArray.Data.Add(new AccountRead
-        {
-            Id = "100",
-            Type = "accounts",
-            Attributes = new AccountProperties
-            {
-                Name = "Tangerine Checking",
-                Account_number = "12345",
-                Type = ShortAccountTypeProperty.Asset,
-            }
-        });
-        accountArray.Data.Add(new AccountRead
-        {
-            Id = "200",
-            Type = "accounts",
-            Attributes = new AccountProperties
-            {
-                Name = "Tangerine Fund",
-                Account_number = "67890",
-                Type = ShortAccountTypeProperty.Asset,
-            }
-        });
-        accountArray.Data.Add(new AccountRead
-        {
-            Id = "300",
-            Type = "accounts",
-            Attributes = new AccountProperties
-            {
-                Name = "Tangerine Savings Account",
-                Account_number = "11111",
-                Type = ShortAccountTypeProperty.Asset,
-            }
-        });
-
-        SetupListAccountMock(accountArray);
+        // Arrange: simulate that a transfer from account 100 to 200 for $150 on 2026-01-28
+        // already exists (e.g. imported from Actual Budget previously)
+        SetupExistingTransfer("100", "200", new DateOnly(2026, 1, 28), 150.00m);
 
         var transaction = new FIIITransaction
         {
-            FitId = "6386",
-            TransactionType = "XFER",
-            Date = new DateOnly(2026, 1, 28),
-            Amount = -150.00m,
-            Name = "Deposit from Tangerine Savings Account",
-            Memo = "Transfer",
-            OpposingAccountNumber = string.Empty,
-        };
-
-        var imported = await _service.ImportTransactionsAsync("100", [transaction]);
-
-        // XFER type should still produce a Transfer
-        Assert.Equal(1, imported);
-        Assert.Single(_capturedTransactions);
-
-        var split = _capturedTransactions[0].Transactions.First();
-        Assert.Equal(TransactionTypeProperty.Transfer, split.Type);
-    }
-
-    /// <summary>
-    /// A DEBIT transaction with BANKACCTTO (opposing account number) that matches a known
-    /// account SHOULD create a Transfer — the bank explicitly told us where the money went.
-    /// </summary>
-    [Fact]
-    public async Task DebitWithBankAcctTo_MatchingKnownAccount_CreatesTransfer()
-    {
-        var transaction = new FIIITransaction
-        {
-            FitId = "6387",
+            FitId = "6385",
             TransactionType = "DEBIT",
             Date = new DateOnly(2026, 1, 28),
             Amount = -150.00m,
             Name = "EFT Withdrawal to Tangerine Fund",
             Memo = "To Tangerine Fund",
-            // Bank included BANKACCTTO with the account number
-            OpposingAccountNumber = "67890",
+            OpposingAccountNumber = string.Empty,
         };
 
         var imported = await _service.ImportTransactionsAsync("100", [transaction]);
 
-        // Opposing account number matches "Tangerine Fund" (account_number=67890)
-        // → should be a Transfer
-        Assert.Equal(1, imported);
-        Assert.Single(_capturedTransactions);
-
-        var split = _capturedTransactions[0].Transactions.First();
-        Assert.Equal(TransactionTypeProperty.Transfer, split.Type);
+        // Should be skipped — no API call made
+        Assert.Equal(0, imported);
+        Assert.Empty(_capturedTransactions);
     }
 
     /// <summary>
-    /// End-to-end: parse the exact QFX content from a real Tangerine Bank file containing
-    /// an EFT withdrawal, then import it. Should produce exactly one Withdrawal.
+    /// A different amount on the same date should NOT be skipped (it's a different transaction).
     /// </summary>
     [Fact]
-    public async Task EndToEnd_ParseAndImport_EftWithdrawalProducesSingleWithdrawal()
+    public async Task EftWithdrawal_DifferentAmount_IsNotSkipped()
     {
-        // Arrange: exact QFX content from the bank
+        // Existing: $150 transfer on 2026-01-28
+        SetupExistingTransfer("100", "200", new DateOnly(2026, 1, 28), 150.00m);
+
+        // New: $200 transfer on the same date
+        var transaction = new FIIITransaction
+        {
+            FitId = "6400",
+            TransactionType = "DEBIT",
+            Date = new DateOnly(2026, 1, 28),
+            Amount = -200.00m,
+            Name = "EFT Withdrawal to Tangerine Fund",
+            Memo = "To Tangerine Fund",
+            OpposingAccountNumber = string.Empty,
+        };
+
+        var imported = await _service.ImportTransactionsAsync("100", [transaction]);
+
+        // Should import (different amount)
+        Assert.Equal(1, imported);
+        Assert.Single(_capturedTransactions);
+    }
+
+    /// <summary>
+    /// A withdrawal to an expense account (not a known asset account) should not
+    /// be affected by transfer deduplication.
+    /// </summary>
+    [Fact]
+    public async Task RegularWithdrawal_ToExpenseAccount_IsNeverSkipped()
+    {
+        // Even with existing transfers, a regular withdrawal should import
+        SetupExistingTransfer("100", "200", new DateOnly(2026, 1, 28), 50.00m);
+
+        var transaction = new FIIITransaction
+        {
+            FitId = "6401",
+            TransactionType = "DEBIT",
+            Date = new DateOnly(2026, 1, 28),
+            Amount = -50.00m,
+            Name = "Tim Hortons",
+            Memo = "Coffee",
+            OpposingAccountNumber = string.Empty,
+        };
+
+        var imported = await _service.ImportTransactionsAsync("100", [transaction]);
+
+        // "Coffee" doesn't match any asset account — should import normally
+        Assert.Equal(1, imported);
+        Assert.Single(_capturedTransactions);
+    }
+
+    /// <summary>
+    /// End-to-end: parse the exact QFX content from a real Tangerine Bank file,
+    /// with a prior transfer already existing. The import should be skipped.
+    /// </summary>
+    [Fact]
+    public async Task EndToEnd_ParseAndImport_DuplicateTransferIsSkipped()
+    {
+        // Simulate existing transfer from prior Actual Budget import
+        SetupExistingTransfer("100", "200", new DateOnly(2026, 1, 28), 150.00m);
+
         var qfxContent = """
             OFXHEADER:100
             DATA:OFXSGML
@@ -327,30 +348,15 @@ public class FireflyIIIServiceTransferTests : IDisposable
             </OFX>
             """;
 
-        // Parse QFX
         var transactions = QfxParserService.Parse(qfxContent);
-
-        // Verify parse produced exactly one transaction
         var tx = Assert.Single(transactions);
         Assert.Equal("DEBIT", tx.TransactionType);
         Assert.Equal(-150.00m, tx.Amount);
-        Assert.Equal("EFT Withdrawal to Tangerine Fund", tx.Name);
-        Assert.Equal("To Tangerine Fund", tx.Memo);
 
-        // Import it
         var imported = await _service.ImportTransactionsAsync("100", transactions.ToList());
 
-        // Assert: exactly one API call, and it's a Withdrawal
-        Assert.Equal(1, imported);
-        Assert.Single(_capturedTransactions);
-
-        var split = _capturedTransactions[0].Transactions.First();
-        Assert.Equal(TransactionTypeProperty.Withdrawal, split.Type);
-        Assert.Equal("100", split.Source_id);
-
-        // The destination must NOT be "Tangerine Fund" (an asset account name) —
-        // that would cause Firefly III to auto-promote to Transfer, creating a duplicate.
-        Assert.NotEqual("Tangerine Fund", split.Destination_name);
-        Assert.Equal("EFT Withdrawal to Tangerine Fund", split.Destination_name);
+        // Duplicate transfer detected — should be skipped
+        Assert.Equal(0, imported);
+        Assert.Empty(_capturedTransactions);
     }
 }

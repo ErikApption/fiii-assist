@@ -170,6 +170,11 @@ public partial class DashboardViewModel : ObservableObject
 
     private void OnQfxFileDetected(object? sender, string filePath)
     {
+        // Don't trigger the import dialog if the wizard is already active —
+        // the user may be importing this same file through the wizard.
+        if (ImportWizard.IsWizardOpen)
+            return;
+
         // Raise on UI thread via dispatcher – the View handles the dialog
         ImportRequested?.Invoke(this, filePath);
     }
