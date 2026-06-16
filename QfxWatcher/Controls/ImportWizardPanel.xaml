@@ -144,6 +144,42 @@
                 </StackPanel>
 
                 <!-- ════════════════════════════════════════════════════════════
+                     Step 2b: Account Update Confirmation
+                     Shown when the QFX ACCTID doesn't match the selected account.
+                     Asks user if Firefly III account should be updated.
+                     ════════════════════════════════════════════════════════════ -->
+                <StackPanel Spacing="12"
+                            Visibility="{x:Bind ViewModel.CurrentStep, Converter={StaticResource StepToVisibility}, ConverterParameter=AccountUpdateConfirmation, Mode=OneWay}">
+
+                    <TextBlock Text="Update account number?"
+                               Style="{StaticResource BodyStrongTextBlockStyle}" />
+
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                        <Run Text="The QFX file contains account ID" />
+                        <Run Text="{x:Bind ViewModel.QfxAccountId, Mode=OneWay}" FontWeight="SemiBold" />
+                        <Run Text="but the selected account" />
+                        <Run Text="{x:Bind ViewModel.SelectedAccountName, Mode=OneWay}" FontWeight="SemiBold" />
+                        <Run Text="does not have a matching account number in Firefly III." />
+                    </TextBlock>
+
+                    <TextBlock Text="Would you like to update the Firefly III account with this number so future imports auto-match?"
+                               TextWrapping="Wrap" />
+
+                    <!-- Action buttons -->
+                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                HorizontalAlignment="Right" Margin="0,8,0,0">
+                        <Button Content="Back"
+                                Command="{x:Bind ViewModel.GoBackCommand}" />
+                        <Button Content="No, Skip"
+                                Command="{x:Bind ViewModel.SkipAccountUpdateCommand}" />
+                        <Button Content="Yes, Update"
+                                Command="{x:Bind ViewModel.ConfirmAccountUpdateCommand}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- ════════════════════════════════════════════════════════════
                      Step 3: Transaction Preview
                      ════════════════════════════════════════════════════════════ -->
                 <Grid Visibility="{x:Bind ViewModel.CurrentStep, Converter={StaticResource StepToVisibility}, ConverterParameter=TransactionPreview, Mode=OneWay}"

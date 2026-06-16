@@ -753,8 +753,17 @@ public sealed class FireflyIIIService : IDisposable
             }
         }
 
-        // Normal transaction: Memo is the opposing account name (like "opposing-name" role in data-importer)
-        var opposingName = CleanAccountName(tx.Memo);
+        // Normal transaction: determine the opposing account name.
+        // For DEBIT and CREDIT transactions, use the Name field (payee/merchant) as the
+        // opposing account since it more accurately identifies the counterparty.
+        // For other types, use the Memo field (like "opposing-name" role in data-importer).
+        string? opposingName;
+        var trnTypeNorm = tx.TransactionType?.Trim();
+        if (string.Equals(trnTypeNorm, "DEBIT", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(trnTypeNorm, "CREDIT", StringComparison.OrdinalIgnoreCase))
+            opposingName = CleanAccountName(tx.Name);
+        else
+            opposingName = CleanAccountName(tx.Memo);
 
         // Per data-importer EmptyAccounts convention: if opposing name is empty, use "(no name)"
         opposingName ??= "(no name)";
@@ -768,9 +777,8 @@ public sealed class FireflyIIIService : IDisposable
         {
             // ATM/cash withdrawals go to Firefly III's special "(cash)" destination account
             // per Firefly III's cash tracking conventions (How to track cash).
-            var trnType = tx.TransactionType?.Trim();
-            if (string.Equals(trnType, "ATM", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(trnType, "CASH", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(trnTypeNorm, "ATM", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(trnTypeNorm, "CASH", StringComparison.OrdinalIgnoreCase))
             {
                 return (TransactionTypeProperty.Withdrawal, null, accountId, "(cash)", null);
             }

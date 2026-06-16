@@ -133,6 +133,10 @@
                         Header="Error if duplicate transaction detected"
                         IsOn="{x:Bind ViewModel.ErrorIfDuplicateHash, Mode=TwoWay}" />
 
+                    <ToggleSwitch
+                        Header="Use batch mode for imports (better performance)"
+                        IsOn="{x:Bind ViewModel.UseBatchMode, Mode=TwoWay}" />
+
                 </StackPanel>
             </Expander>
 

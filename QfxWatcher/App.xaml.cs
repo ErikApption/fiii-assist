@@ -14,6 +14,7 @@ public partial class App : Application
     internal static BankAccountMappingService BankAccountMappingService { get; } = new();
     internal static FireflyIIIService FireflyService { get; } = new();
     internal static FileWatcherService  FileWatcherService  { get; } = new();
+    internal static QfxFileTrackingService QfxFileTrackingService { get; } = new();
 
     internal static ImportWizardViewModel ImportWizardViewModel { get; } =
         new(FireflyService, SettingsService);

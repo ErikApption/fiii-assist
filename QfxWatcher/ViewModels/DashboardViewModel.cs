@@ -232,6 +232,7 @@ public partial class DashboardViewModel : ObservableObject
                         transactions,
                         cfg.ErrorIfDuplicateHash,
                         cfg.SkipDuplicatesByContent,
+                        useBatchMode: cfg.UseBatchMode,
                         existingExternalIds: existingIds);
                 }
                 finally

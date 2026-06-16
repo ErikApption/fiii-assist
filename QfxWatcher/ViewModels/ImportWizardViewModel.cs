@@ -56,6 +56,19 @@ public partial class ImportWizardViewModel : ObservableObject
     /// <summary>Display name of the currently selected account (for UI binding).</summary>
     public string SelectedAccountName => SelectedAccount?.Attributes?.Name ?? string.Empty;
 
+    /// <summary>
+    /// Whether the user approved updating the Firefly III account number
+    /// with the QFX file's ACCTID. Set during the AccountUpdateConfirmation step.
+    /// </summary>
+    [ObservableProperty]
+    private bool _shouldUpdateAccountNumber;
+
+    /// <summary>
+    /// The QFX account ID shown in the update confirmation prompt.
+    /// Exposed for UI binding.
+    /// </summary>
+    public string QfxAccountId => _qfxAccountId;
+
     // ── File & transactions ───────────────────────────────────────────────────
 
     [ObservableProperty]
@@ -143,6 +156,41 @@ public partial class ImportWizardViewModel : ObservableObject
         if (SelectedAccount is null)
             return;
 
+        // If the account was manually selected and the QFX has an ACCTID that doesn't
+        // match the selected account, ask the user if they want to update Firefly III.
+        if (!_accountAutoMatched && !string.IsNullOrWhiteSpace(_qfxAccountId))
+        {
+            var existingNumber = SelectedAccount.Attributes?.Account_number?.Trim();
+            if (string.IsNullOrWhiteSpace(existingNumber) ||
+                !existingNumber.Equals(_qfxAccountId.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                // Show the account update confirmation step
+                ShouldUpdateAccountNumber = true; // default to yes
+                CurrentStep = WizardStep.AccountUpdateConfirmation;
+                CanGoBack = true;
+                CanGoNext = true;
+                return;
+            }
+        }
+
+        CurrentStep = WizardStep.TransactionPreview;
+        CanGoBack = true;
+        CanGoNext = TransactionCount > 0;
+    }
+
+    [RelayCommand]
+    private void ConfirmAccountUpdate()
+    {
+        // Proceed to transaction preview — the actual update happens in ConfirmImportAsync
+        CurrentStep = WizardStep.TransactionPreview;
+        CanGoBack = true;
+        CanGoNext = TransactionCount > 0;
+    }
+
+    [RelayCommand]
+    private void SkipAccountUpdate()
+    {
+        ShouldUpdateAccountNumber = false;
         CurrentStep = WizardStep.TransactionPreview;
         CanGoBack = true;
         CanGoNext = TransactionCount > 0;
@@ -253,22 +301,17 @@ public partial class ImportWizardViewModel : ObservableObject
         var settings = _settings.Load();
         var accountId = SelectedAccount.Id;
 
-        // If the user manually selected the account and the QFX file had an ACCTID,
-        // update the Firefly III account's account_number so future imports auto-match.
-        if (!_accountAutoMatched && !string.IsNullOrWhiteSpace(_qfxAccountId))
+        // If the user approved updating the Firefly III account number
+        // with the QFX file's ACCTID, do it now so future imports auto-match.
+        if (ShouldUpdateAccountNumber && !_accountAutoMatched && !string.IsNullOrWhiteSpace(_qfxAccountId))
         {
-            var existingNumber = SelectedAccount.Attributes?.Account_number?.Trim();
-            if (string.IsNullOrWhiteSpace(existingNumber) ||
-                !existingNumber.Equals(_qfxAccountId.Trim(), StringComparison.OrdinalIgnoreCase))
+            try
             {
-                try
-                {
-                    await _fireflyService.UpdateAccountNumberAsync(accountId, _qfxAccountId.Trim());
-                }
-                catch
-                {
-                    // Non-fatal — the import can still proceed without the account number update
-                }
+                await _fireflyService.UpdateAccountNumberAsync(accountId, _qfxAccountId.Trim());
+            }
+            catch
+            {
+                // Non-fatal — the import can still proceed without the account number update
             }
         }
 
@@ -314,7 +357,8 @@ public partial class ImportWizardViewModel : ObservableObject
                 Transactions.ToList(),
                 settings.ErrorIfDuplicateHash,
                 settings.SkipDuplicatesByContent,
-                existingExternalIds: existingIds, useBatchMode: true);
+                useBatchMode: settings.UseBatchMode,
+                existingExternalIds: existingIds);
         }
         finally
         {
@@ -356,6 +400,13 @@ public partial class ImportWizardViewModel : ObservableObject
                     CurrentStep = WizardStep.FileSelection;
                     CanGoBack = false;
                 }
+                else if (!string.IsNullOrWhiteSpace(_qfxAccountId))
+                {
+                    // We went through account update confirmation — go back there
+                    CurrentStep = WizardStep.AccountUpdateConfirmation;
+                    CanGoBack = true;
+                    CanGoNext = true;
+                }
                 else
                 {
                     // User selected the account — go back to account selection
@@ -363,6 +414,13 @@ public partial class ImportWizardViewModel : ObservableObject
                     CanGoNext = SelectedAccount != null;
                     CanGoBack = true;
                 }
+                break;
+
+            case WizardStep.AccountUpdateConfirmation:
+                // Go back to account selection
+                CurrentStep = WizardStep.AccountSelection;
+                CanGoNext = SelectedAccount != null;
+                CanGoBack = true;
                 break;
 
             case WizardStep.AccountSelection:
@@ -394,6 +452,7 @@ public partial class ImportWizardViewModel : ObservableObject
         SkippedCount = 0;
         TotalCount = 0;
         TransactionCount = 0;
+        ShouldUpdateAccountNumber = false;
         _accountAutoMatched = false;
         _qfxAccountId = string.Empty;
     }
@@ -411,6 +470,7 @@ public partial class ImportWizardViewModel : ObservableObject
         SelectedFileName = string.Empty;
         SelectedAccount = null;
         ErrorMessage = string.Empty;
+        ShouldUpdateAccountNumber = false;
         _accountAutoMatched = false;
         _qfxAccountId = string.Empty;
         CurrentStep = WizardStep.FileSelection;

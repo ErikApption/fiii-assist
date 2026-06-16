@@ -49,6 +49,11 @@ public class AppSettings
     public bool ErrorIfDuplicateHash { get; set; }
 
     /// <summary>
+    /// When true, transactions are submitted using Firefly III's batch mode for better performance.
+    /// </summary>
+    public bool UseBatchMode { get; set; } = true;
+
+    /// <summary>
     /// When true, transactions whose FitId (external_id) already exists in Firefly III
     /// for the target account are skipped during import to prevent duplicates.
     /// </summary>

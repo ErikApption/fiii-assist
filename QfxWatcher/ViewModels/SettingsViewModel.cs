@@ -39,6 +39,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _errorIfDuplicateHash;
 
     [ObservableProperty]
+    private bool _useBatchMode = true;
+
+    [ObservableProperty]
     private bool _skipDuplicateTransactions = true;
 
     [ObservableProperty]
@@ -102,6 +105,7 @@ public partial class SettingsViewModel : ObservableObject
         nameof(DefaultAccountId) or
         nameof(IgnoreSslCertificateValidation) or
         nameof(ErrorIfDuplicateHash) or
+        nameof(UseBatchMode) or
         nameof(SkipDuplicateTransactions) or
         nameof(SkipDuplicatesByContent) or
         nameof(LastConnectionSuccessful);
@@ -123,6 +127,7 @@ public partial class SettingsViewModel : ObservableObject
             DefaultAccountId              = cfg.DefaultAccountId;
             IgnoreSslCertificateValidation = cfg.IgnoreSslCertificateValidation;
             ErrorIfDuplicateHash = cfg.ErrorIfDuplicateHash;
+            UseBatchMode = cfg.UseBatchMode;
             SkipDuplicateTransactions = cfg.SkipDuplicateTransactions;
             SkipDuplicatesByContent = cfg.SkipDuplicatesByContent;
             LastConnectionSuccessful = cfg.LastConnectionSuccessful;
@@ -147,6 +152,7 @@ public partial class SettingsViewModel : ObservableObject
             DefaultAccountId              = DefaultAccountId,
             IgnoreSslCertificateValidation = IgnoreSslCertificateValidation,
             ErrorIfDuplicateHash = ErrorIfDuplicateHash,
+            UseBatchMode = UseBatchMode,
             SkipDuplicateTransactions = SkipDuplicateTransactions,
             SkipDuplicatesByContent = SkipDuplicatesByContent,
             LastConnectionSuccessful = LastConnectionSuccessful,
