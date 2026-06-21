@@ -1,9 +1,10 @@
+using System;
 using System.ComponentModel;
 using Microsoft.UI.Xaml.Controls;
 using FiiiAssist.FireflyIII;
 using FiiiAssist.ViewModels;
 using Windows.Storage.Pickers;
-using WinRT.Interop;
+using System.Threading.Tasks;
 
 namespace FiiiAssist.Controls;
 
@@ -50,9 +51,11 @@ public sealed partial class ImportWizardPanel : UserControl
             picker.FileTypeFilter.Add(".qfx");
             picker.FileTypeFilter.Add(".ofx");
 
-            // WinUI 3 requires initializing the picker with the window handle
-            var hwnd = WindowNative.GetWindowHandle(App.MainWindow);
-            InitializeWithWindow.Initialize(picker, hwnd);
+#if WINDOWS
+            // WinUI 3 / WinAppSDK requires initializing the picker with the window handle
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+#endif
 
             var file = await picker.PickSingleFileAsync();
 

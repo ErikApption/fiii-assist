@@ -4,6 +4,10 @@ using Microsoft.UI.Xaml.Controls;
 using FiiiAssist.FireflyIII;
 using FiiiAssist.Models;
 using FiiiAssist.ViewModels;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System;
+using System.Linq;
 
 namespace FiiiAssist.Pages;
 

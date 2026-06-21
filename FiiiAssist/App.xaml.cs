@@ -28,7 +28,7 @@ public partial class App : Application
     internal static BankAccountsViewModel BankAccountsViewModel { get; } =
         new(BankAccountMappingService, FireflyService);
 
-    internal static MainWindow? MainWindow { get; private set; }
+    internal static Window? MainWindow { get; private set; }
 
     public App()
     {

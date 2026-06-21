@@ -1,4 +1,7 @@
-using Microsoft.Win32;
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace FiiiAssist.Services;
 
@@ -21,12 +24,21 @@ public sealed class FileWatcherService : IDisposable
     // ── Auto-detection ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Attempts to find the Microsoft Edge downloads folder.
-    /// Priority:
-    ///   1. Edge profile preferences file (per-user)
-    ///   2. Default Windows Downloads folder (%USERPROFILE%\Downloads)
+    /// Attempts to find a reasonable downloads folder for the current platform.
+    /// On Windows, tries the Microsoft Edge profile preferences first, then the
+    /// system downloads folder. On other platforms, uses XDG or ~/Downloads.
     /// </summary>
     public static string DetectEdgeDownloadsFolder()
+    {
+#if WINDOWS
+        return DetectEdgeDownloadsFolderWindows();
+#else
+        return DetectEdgeDownloadsFolderCrossPlatform();
+#endif
+    }
+
+#if WINDOWS
+    private static string DetectEdgeDownloadsFolderWindows()
     {
         // 1. Try reading Edge's preferences JSON
         try
@@ -37,7 +49,6 @@ public sealed class FileWatcherService : IDisposable
 
             if (Directory.Exists(edgePrefDir))
             {
-                // Check all profile folders (Default, Profile 1, Profile 2, …)
                 var profileDirs = Directory.EnumerateDirectories(edgePrefDir)
                     .Where(d => Path.GetFileName(d).StartsWith("Default", StringComparison.OrdinalIgnoreCase)
                              || Path.GetFileName(d).StartsWith("Profile ", StringComparison.OrdinalIgnoreCase));
@@ -54,28 +65,90 @@ public sealed class FileWatcherService : IDisposable
                 }
             }
         }
-        catch (Exception)
+        catch
         {
             // Fall through to default
         }
 
-        // 2. Fall back to the Windows "Downloads" shell folder
+        return GetDefaultDownloadsFolder();
+    }
+#endif
+
+    private static string DetectEdgeDownloadsFolderCrossPlatform()
+    {
+        // On Linux/macOS, try to find a Chromium/Edge preferences file
+        try
+        {
+            string? configBase = null;
+
+            if (OperatingSystem.IsLinux())
+            {
+                configBase = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
+                    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config");
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                configBase = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "Library", "Application Support");
+            }
+
+            if (configBase is not null)
+            {
+                var edgePrefDir = Path.Combine(configBase, "microsoft-edge");
+                if (!Directory.Exists(edgePrefDir))
+                    edgePrefDir = Path.Combine(configBase, "Microsoft Edge");
+
+                if (Directory.Exists(edgePrefDir))
+                {
+                    var profileDirs = Directory.EnumerateDirectories(edgePrefDir)
+                        .Where(d => Path.GetFileName(d).StartsWith("Default", StringComparison.OrdinalIgnoreCase)
+                                 || Path.GetFileName(d).StartsWith("Profile ", StringComparison.OrdinalIgnoreCase));
+
+                    foreach (var profile in profileDirs)
+                    {
+                        var prefFile = Path.Combine(profile, "Preferences");
+                        if (!File.Exists(prefFile)) continue;
+
+                        var json = File.ReadAllText(prefFile);
+                        var folder = ExtractDownloadDirFromJson(json);
+                        if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+                            return folder;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fall through to default
+        }
+
         return GetDefaultDownloadsFolder();
     }
 
     /// <summary>Returns the current user's Downloads folder path.</summary>
     public static string GetDefaultDownloadsFolder()
     {
-        // Try shell folder registry key first (most reliable)
+#if WINDOWS
+        // Try shell folder registry key first (most reliable on Windows)
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                 @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders");
             var val = key?.GetValue("{374DE290-123F-4565-9164-39C4925E467B}") as string;
             if (!string.IsNullOrWhiteSpace(val) && Directory.Exists(val))
                 return val;
         }
         catch { /* ignore */ }
+#endif
+
+        // XDG_DOWNLOAD_DIR on Linux
+        if (OperatingSystem.IsLinux())
+        {
+            var xdgDir = Environment.GetEnvironmentVariable("XDG_DOWNLOAD_DIR");
+            if (!string.IsNullOrWhiteSpace(xdgDir) && Directory.Exists(xdgDir))
+                return xdgDir;
+        }
 
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
