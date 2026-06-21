@@ -12,12 +12,17 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiiiAssist.Cli", "FiiiAssis
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution", "Solution", "{83537AFB-1B5D-4FC6-80D7-93E00532FF3B}"
 	ProjectSection(SolutionItems) = preProject
+		Directory.Build.props = Directory.Build.props
+		Directory.Build.targets = Directory.Build.targets
+		Directory.Packages.props = Directory.Packages.props
 		global.json = global.json
 		Notes.md = Notes.md
 		README.md = README.md
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiiiAssist", "FiiiAssist\FiiiAssist.csproj", "{243BB548-898D-79D4-54F0-7651DCC0A079}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FiiiAssist.Tests", "FiiiAssist.Tests\FiiiAssist.Tests.csproj", "{C291B828-14FD-54DA-396E-1C87A537A503}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -89,6 +94,18 @@ Global
 		{243BB548-898D-79D4-54F0-7651DCC0A079}.Release|x64.Build.0 = Release|Any CPU
 		{243BB548-898D-79D4-54F0-7651DCC0A079}.Release|x86.ActiveCfg = Release|Any CPU
 		{243BB548-898D-79D4-54F0-7651DCC0A079}.Release|x86.Build.0 = Release|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Debug|x64.Build.0 = Debug|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Debug|x86.Build.0 = Debug|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Release|x64.ActiveCfg = Release|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Release|x64.Build.0 = Release|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Release|x86.ActiveCfg = Release|Any CPU
+		{C291B828-14FD-54DA-396E-1C87A537A503}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
