@@ -236,7 +236,8 @@ public sealed class FireflyIIIService : IDisposable
             accounts = [];
         }
 
-        return await ImportTransactionsInternalAsync(accountId, transactions, accounts, errorIfDuplicateHash, skipDuplicatesByContent, useBatchMode, existingExternalIds);
+        var result = await ImportTransactionsInternalAsync(accountId, transactions, accounts, errorIfDuplicateHash, skipDuplicatesByContent, useBatchMode, existingExternalIds);
+        return result.added;
     }
 
     /// <summary>
@@ -375,12 +376,13 @@ public sealed class FireflyIIIService : IDisposable
         return $"{date:yyyyMMdd}|{amount:0.00}|{sourceId ?? ""}|{destinationId ?? ""}";
     }
 
-    private async Task<int> ImportTransactionsInternalAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, IReadOnlyList<AccountSingle> accounts, bool errorIfDuplicateHash, bool skipDuplicatesByContent, bool useBatchMode, HashSet<string>? existingExternalIds)
+    private async Task<(int added,IReadOnlyCollection<string> errors)> ImportTransactionsInternalAsync(string accountId, IReadOnlyList<FIIITransaction> transactions, IReadOnlyList<AccountSingle> accounts, bool errorIfDuplicateHash, bool skipDuplicatesByContent, bool useBatchMode, HashSet<string>? existingExternalIds)
     {
+        var errors = new List<string>();
         var added = 0;
 
         if (transactions.Count == 0)
-            return added;
+            return (added, errors);
 
         // Pre-fetch existing transfers for this account to detect duplicates across import sources.
         // Different sources use different external_ids for the same real
@@ -525,8 +527,15 @@ public sealed class FireflyIIIService : IDisposable
                 added++;
                 OnTransactionProcessed?.Invoke(tx, ImportTransactionResult.Imported);
             }
-            catch (ApiException ex) when (ex.StatusCode == 422)
+            catch (ApiException<InternalExceptionResponse> ex) //when (ex.StatusCode == 422)
             {
+                errors.Add($"Failed to import transaction on {tx.Date:yyyy-MM-dd} for amount {tx.Amount:0.00}: {ex.Result.Message}");
+                OnTransactionError?.Invoke(tx, ex.Result.Message);
+                OnTransactionProcessed?.Invoke(tx, ImportTransactionResult.Failed);
+            }
+            catch (ApiException ex) //when (ex.StatusCode == 422)
+            {
+                errors.Add($"Failed to import transaction on {tx.Date:yyyy-MM-dd} for amount {tx.Amount:0.00}: {ex.Response ?? ex.Message}");
                 OnTransactionError?.Invoke(tx, ex.Response ?? ex.Message);
                 OnTransactionProcessed?.Invoke(tx, ImportTransactionResult.Failed);
             }
@@ -536,7 +545,7 @@ public sealed class FireflyIIIService : IDisposable
             await _client!.FinishBatchAsync(null);
         }
 
-        return added;
+        return (added, errors);
     }
 
     /// <summary>
@@ -754,12 +763,13 @@ public sealed class FireflyIIIService : IDisposable
         }
 
         // Normal transaction: determine the opposing account name.
-        // For DEBIT and CREDIT transactions, use the Name field (payee/merchant) as the
-        // opposing account since it more accurately identifies the counterparty.
-        // For other types, use the Memo field (like "opposing-name" role in data-importer).
+        // For credits (deposits), always use the Name field as the source account
+        // since it identifies where the money came from.
+        // For debits, use the Name field when TRNTYPE is DEBIT, otherwise use Memo.
         string? opposingName;
         var trnTypeNorm = tx.TransactionType?.Trim();
-        if (string.Equals(trnTypeNorm, "DEBIT", StringComparison.OrdinalIgnoreCase)
+        if (isDeposit
+            || string.Equals(trnTypeNorm, "DEBIT", StringComparison.OrdinalIgnoreCase)
             || string.Equals(trnTypeNorm, "CREDIT", StringComparison.OrdinalIgnoreCase))
             opposingName = CleanAccountName(tx.Name);
         else

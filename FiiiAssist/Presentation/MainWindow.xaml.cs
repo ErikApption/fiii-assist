@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 
 namespace FiiiAssist;
 
+[Microsoft.UI.Xaml.Data.Bindable]
 public sealed partial class MainWindow : Window
 {
     public SettingsViewModel SettingsVM => App.SettingsViewModel;
@@ -18,7 +19,7 @@ public sealed partial class MainWindow : Window
 
         // Navigate to Settings by default so the user can configure the connection first.
         // Dashboard is disabled until a successful connection test.
-        NavView.SelectedItem = NavView.MenuItems[2];
+        NavView.SelectedItem = NavView.MenuItems[4];
         ContentFrame.Navigate(typeof(SettingsPage));
 
         // If credentials are already saved, auto-connect on launch (deferred until UI is ready)
@@ -38,11 +39,12 @@ public sealed partial class MainWindow : Window
             if (SettingsVM.IsConnected)
             {
                 App.DashboardViewModel.NotifyConnected();
-
-                // Show pending QFX files popup after connection is confirmed
-                await ShowPendingFilesDialogAsync();
             }
         }
+
+        // Always check for pending QFX files on startup, regardless of connection status.
+        // The user should be informed about unprocessed files even if the server is unreachable.
+        await ShowPendingFilesDialogAsync();
     }
 
     // ── Pending QFX files popup ───────────────────────────────────────────────
@@ -68,15 +70,29 @@ public sealed partial class MainWindow : Window
 
             if (result == ContentDialogResult.Primary)
             {
-                // User chose to import — trigger the import wizard with this file
-                tracker.MarkImported(file.FilePath);
+                if (!SettingsVM.IsConnected)
+                {
+                    // Can't import without a connection — inform the user and leave file as pending
+                    var errorDialog = new ContentDialog
+                    {
+                        Title = "Cannot Import",
+                        Content = "Not connected to Firefly III. The file will remain pending for next startup.",
+                        CloseButtonText = "OK",
+                        XamlRoot = ContentFrame.XamlRoot,
+                    };
+                    await errorDialog.ShowAsync();
+                    break;
+                }
+
+                // User chose to import — open the wizard (don't mark as imported yet;
+                // the wizard/import flow will handle status once the import succeeds or fails)
                 var wizard = App.ImportWizardViewModel;
                 wizard.OpenWizardCommand.Execute(null);
                 await wizard.FileSelectedAsync(file.FilePath);
 
                 // Navigate to Dashboard so the user can see the wizard
                 NavView.SelectedItem = NavView.MenuItems[0];
-                ContentFrame.Navigate(typeof(DashboardPage));
+                ContentFrame.Navigate(typeof(ImportPage));
 
                 // Only process one file at a time via the wizard — break out
                 // so the user can complete the import before being prompted again
@@ -132,21 +148,23 @@ public sealed partial class MainWindow : Window
     {
         if (args.SelectedItem is not NavigationViewItem item) return;
 
-        // Block navigation to Dashboard/BankAccounts when not connected
+        // Block navigation to Dashboard/BankAccounts/DuplicateChecker/SubscriptionDetector when not connected
         var tag = item.Tag?.ToString();
-        if ((tag == "Dashboard" || tag == "BankAccounts") && !SettingsVM.IsConnected)
+        if ((tag == "Dashboard" || tag == "BankAccounts" || tag == "DuplicateChecker" || tag == "SubscriptionDetector") && !SettingsVM.IsConnected)
         {
             // Re-select Settings
-            NavView.SelectedItem = NavView.MenuItems[2];
+            NavView.SelectedItem = NavView.MenuItems[4];
             return;
         }
 
         _ = tag switch
         {
-            "Dashboard"    => ContentFrame.Navigate(typeof(DashboardPage)),
-            "BankAccounts" => ContentFrame.Navigate(typeof(BankAccountsPage)),
-            "Settings"     => ContentFrame.Navigate(typeof(SettingsPage)),
-            _              => false,
+            "Dashboard"            => ContentFrame.Navigate(typeof(ImportPage)),
+            "BankAccounts"         => ContentFrame.Navigate(typeof(BankAccountsPage)),
+            "DuplicateChecker"     => ContentFrame.Navigate(typeof(DuplicateCheckerPage)),
+            "SubscriptionDetector" => ContentFrame.Navigate(typeof(SubscriptionDetectorPage)),
+            "Settings"             => ContentFrame.Navigate(typeof(SettingsPage)),
+            _                      => false,
         };
     }
 }

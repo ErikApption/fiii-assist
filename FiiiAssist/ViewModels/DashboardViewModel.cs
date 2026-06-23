@@ -15,6 +15,7 @@ namespace FiiiAssist.ViewModels;
 /// ViewModel for the Dashboard page.  Owns the FileWatcher and coordinates
 /// detecting QFX files with calling the Firefly III service.
 /// </summary>
+[Microsoft.UI.Xaml.Data.Bindable]
 public partial class DashboardViewModel : ObservableObject
 {
     private readonly SettingsService      _settings;
@@ -37,7 +38,7 @@ public partial class DashboardViewModel : ObservableObject
     public ObservableCollection<ImportLogEntry> LogEntries { get; } = [];
 
     /// <summary>
-    /// The Import Wizard ViewModel exposed for data-binding by the DashboardPage.
+    /// The Import Wizard ViewModel exposed for data-binding by the ImportPage.
     /// </summary>
     public ImportWizardViewModel ImportWizard { get; }
 

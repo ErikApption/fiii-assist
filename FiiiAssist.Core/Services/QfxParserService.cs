@@ -142,7 +142,7 @@ public static class QfxParserService
         // SGML tags may or may not be closed: <TAG>value or <TAG>value</TAG>
         var pattern = $@"<{tag}>\s*([^\r\n<]+)";
         var match = Regex.Match(body, pattern, RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
+        return match.Success ? DecodeEntities(match.Groups[1].Value.Trim()) : string.Empty;
     }
 
     // ── XML (OFX 2.x) parser ─────────────────────────────────────────────────
@@ -188,10 +188,22 @@ public static class QfxParserService
     {
         var pattern = $@"<{tag}>\s*(.*?)\s*</{tag}>";
         var match = Regex.Match(body, pattern, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
+        return match.Success ? DecodeEntities(match.Groups[1].Value.Trim()) : string.Empty;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Decodes SGML/XML character entities (&amp;, &lt;, &gt;, &apos;, &quot;)
+    /// and numeric character references (&#NNN; / &#xHHH;).
+    /// </summary>
+    private static string DecodeEntities(string value)
+    {
+        if (string.IsNullOrEmpty(value) || !value.Contains('&'))
+            return value;
+
+        return System.Net.WebUtility.HtmlDecode(value);
+    }
 
     private static DateOnly ParseOFXDate(string raw)
     {

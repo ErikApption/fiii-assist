@@ -12,6 +12,7 @@ public partial class App : Application
     // Simple manual DI – avoids pulling in a full DI container
     internal static SettingsService     SettingsService     { get; } = new();
     internal static BankAccountMappingService BankAccountMappingService { get; } = new();
+    internal static IgnoredSubscriptionService IgnoredSubscriptionService { get; } = new();
     internal static FireflyIIIService FireflyService { get; } = new();
     internal static FileWatcherService  FileWatcherService  { get; } = new();
     internal static QfxFileTrackingService QfxFileTrackingService { get; } = new();
@@ -27,6 +28,12 @@ public partial class App : Application
 
     internal static BankAccountsViewModel BankAccountsViewModel { get; } =
         new(BankAccountMappingService, FireflyService);
+
+    internal static DuplicateCheckerViewModel DuplicateCheckerViewModel { get; } =
+        new(FireflyService);
+
+    internal static SubscriptionDetectorViewModel SubscriptionDetectorViewModel { get; } =
+        new(FireflyService, IgnoredSubscriptionService);
 
     internal static Window? MainWindow { get; private set; }
 

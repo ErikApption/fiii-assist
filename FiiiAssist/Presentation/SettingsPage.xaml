@@ -54,18 +54,6 @@
                         TextWrapping="Wrap"
                         Visibility="{x:Bind ViewModel.HasTestConnectionMessage, Mode=OneWay}" />
 
-                    <!-- Account list shown after successful connection test -->
-                    <ComboBox
-                        x:Name="DefaultAccountCombo"
-                        Header="Default account for imports"
-                        PlaceholderText="Select a default account (optional)"
-                        HorizontalAlignment="Stretch"
-                        ItemsSource="{x:Bind ViewModel.Accounts, Mode=OneWay}"
-                        DisplayMemberPath="Name"
-                        SelectedValuePath="Id"
-                        SelectedValue="{x:Bind ViewModel.DefaultAccountId, Mode=TwoWay}"
-                        Visibility="{x:Bind ViewModel.HasAccounts, Mode=OneWay}" />
-
                 </StackPanel>
             </Expander>
 

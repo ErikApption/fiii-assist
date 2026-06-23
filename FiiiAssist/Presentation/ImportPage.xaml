@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page
-    x:Class="FiiiAssist.Pages.DashboardPage"
+    x:Class="FiiiAssist.Pages.ImportPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="using:FiiiAssist.Converters"
@@ -17,7 +17,7 @@
         <StackPanel Spacing="16">
 
             <!-- ── Title ─────────────────────────────────────────────────── -->
-            <TextBlock Text="Dashboard" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock Text="Import Data" Style="{StaticResource TitleTextBlockStyle}" />
 
             <!-- ── Status card ───────────────────────────────────────────── -->
             <Border CornerRadius="8" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"

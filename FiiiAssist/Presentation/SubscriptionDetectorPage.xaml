@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="FiiiAssist.Pages.SubscriptionDetectorPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:FiiiAssist.Converters"
+    xmlns:models="using:FiiiAssist.Models"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+    Loaded="Page_Loaded">
+
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+        <converters:StringToVisibilityConverter x:Key="StringToVisibility" />
+        <converters:AmountToBrushConverter x:Key="AmountToBrush" />
+    </Page.Resources>
+
+    <Grid Padding="24,16,24,16" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ── Title ─────────────────────────────────────────────────── -->
+        <TextBlock Grid.Row="0" Text="Subscription Detector"
+                   Style="{StaticResource TitleTextBlockStyle}" />
+
+        <TextBlock Grid.Row="1" TextWrapping="Wrap" Opacity="0.7"
+                   Text="Select a bank account to scan for recurring transactions. The tool groups transactions by payee, looks for repeated amounts (±10%), and suggests a billing period. Transactions already linked to a subscription are ignored." />
+
+        <!-- ── Search criteria ────────────────────────────────────────── -->
+        <Border Grid.Row="2" CornerRadius="8"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1" Padding="16"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+
+            <StackPanel Spacing="12">
+                <TextBlock Text="Search Criteria"
+                           Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                    <!-- Account -->
+                    <ComboBox Grid.Column="0"
+                              Header="Account"
+                              HorizontalAlignment="Stretch"
+                              ItemsSource="{x:Bind ViewModel.Accounts, Mode=OneWay}"
+                              SelectedItem="{x:Bind ViewModel.SelectedAccount, Mode=TwoWay}"
+                              PlaceholderText="Select an account…"
+                              DisplayMemberPath="Attributes.Name" />
+
+                    <!-- Minimum occurrences -->
+                    <NumberBox Grid.Column="1"
+                               Header="Min. Occurrences"
+                               Value="{x:Bind ViewModel.MinimumOccurrences, Mode=TwoWay}"
+                               Minimum="2"
+                               Maximum="50"
+                               SpinButtonPlacementMode="Compact"
+                               Width="150" />
+
+                    <!-- Amount tolerance -->
+                    <NumberBox Grid.Column="2"
+                               Header="Amount Tolerance %"
+                               Value="{x:Bind ViewModel.AmountTolerancePercent, Mode=TwoWay}"
+                               Minimum="1"
+                               Maximum="100"
+                               SpinButtonPlacementMode="Compact"
+                               Width="160" />
+                </Grid>
+
+                <!-- Loading accounts indicator -->
+                <StackPanel Orientation="Horizontal" Spacing="8"
+                            Visibility="{x:Bind ViewModel.IsLoadingAccounts, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+                    <ProgressRing IsActive="{x:Bind ViewModel.IsLoadingAccounts, Mode=OneWay}"
+                                  Width="20" Height="20" />
+                    <TextBlock Text="Loading accounts…"
+                               VerticalAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+
+                <!-- Search button -->
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="🔍  Detect Subscriptions"
+                            Command="{x:Bind ViewModel.DetectSubscriptionsCommand}"
+                            IsEnabled="{x:Bind ViewModel.CanSearch, Mode=OneWay}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                    <ProgressRing IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                                  Width="20" Height="20"
+                                  Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                </StackPanel>
+
+                <!-- Error message -->
+                <InfoBar Severity="Error"
+                         Title="Error"
+                         Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                         IsOpen="True"
+                         IsClosable="False"
+                         Visibility="{x:Bind ViewModel.ErrorMessage, Converter={StaticResource StringToVisibility}, Mode=OneWay}" />
+            </StackPanel>
+        </Border>
+
+        <!-- ── Results summary ─────────────────────────────────────────── -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="16"
+                    Visibility="{x:Bind ViewModel.HasResults, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+            <TextBlock VerticalAlignment="Center">
+                <Run Text="Detected subscriptions: " FontWeight="SemiBold" />
+                <Run Text="{x:Bind ViewModel.DetectedCount, Mode=OneWay}" />
+            </TextBlock>
+            <TextBlock VerticalAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                       Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" />
+        </StackPanel>
+
+        <!-- Status message while loading -->
+        <TextBlock Grid.Row="3"
+                   Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                   Visibility="{x:Bind ViewModel.IsLoading, Converter={StaticResource BoolToVisibility}, Mode=OneWay}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+        <!-- ── Subscription table ──────────────────────────────────────── -->
+        <Border Grid.Row="4" CornerRadius="8"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                Visibility="{x:Bind ViewModel.HasResults, Converter={StaticResource BoolToVisibility}, Mode=OneWay}">
+
+            <Grid RowDefinitions="Auto,*">
+                <!-- Column headers -->
+                <Grid Grid.Row="0" Padding="12,8"
+                      ColumnDefinitions="*,100,120,60,100,Auto"
+                      Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                      CornerRadius="4,4,0,0">
+                    <TextBlock Grid.Column="0" Text="Payee" FontWeight="SemiBold" />
+                    <TextBlock Grid.Column="1" Text="Avg. Amount" FontWeight="SemiBold"
+                               HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="Range" FontWeight="SemiBold"
+                               HorizontalAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="Count" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Grid.Column="4" Text="Period" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Grid.Column="5" Text="Actions" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="8,0" />
+                </Grid>
+
+                <!-- Subscription rows -->
+                <ListView Grid.Row="1"
+                          ItemsSource="{x:Bind ViewModel.DetectedSubscriptions, Mode=OneWay}"
+                          SelectionMode="None">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="0" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="models:DetectedSubscriptionRow">
+                            <Grid Padding="12,6"
+                                  ColumnDefinitions="*,100,120,60,100,Auto">
+                                <!-- Payee name -->
+                                <TextBlock Grid.Column="0"
+                                           Text="{x:Bind PayeeName}"
+                                           TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center" />
+                                <!-- Average amount -->
+                                <TextBlock Grid.Column="1"
+                                           Text="{x:Bind AverageAmountText}"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Foreground="{x:Bind AverageAmount, Converter={StaticResource AmountToBrush}}" />
+                                <!-- Amount range -->
+                                <TextBlock Grid.Column="2"
+                                           Text="{x:Bind AmountRangeText}"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <!-- Transaction count -->
+                                <TextBlock Grid.Column="3"
+                                           Text="{x:Bind TransactionCount}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                                <!-- Suggested period -->
+                                <TextBlock Grid.Column="4"
+                                           Text="{x:Bind SuggestedPeriod}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold" />
+                                <!-- Action buttons -->
+                                <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4"
+                                            VerticalAlignment="Center" Margin="8,0">
+                                    <Button Content="✔ Create"
+                                            ToolTipService.ToolTip="Create subscription and matching rule in Firefly III"
+                                            Click="OnCreateClick"
+                                            Tag="{x:Bind}"
+                                            Style="{StaticResource AccentButtonStyle}"
+                                            Padding="8,4" />
+                                    <Button Content="🚫 Ignore"
+                                            ToolTipService.ToolTip="Hide this pattern from future scans"
+                                            Click="OnIgnoreClick"
+                                            Tag="{x:Bind}"
+                                            Padding="8,4" />
+                                    <Button Content="🚫 Ignore Payee"
+                                            ToolTipService.ToolTip="Ignore all patterns for this payee"
+                                            Click="OnIgnorePayeeClick"
+                                            Tag="{x:Bind}"
+                                            Padding="8,4" />
+                                    <ProgressRing IsActive="{x:Bind IsCreating, Mode=OneWay}"
+                                                  Width="16" Height="16"
+                                                  Visibility="{x:Bind IsCreating, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+        </Border>
+
+        <!-- ── Empty state (no results yet) ───────────────────────────── -->
+        <TextBlock Grid.Row="4"
+                   Text="Select an account above and click 'Detect Subscriptions' to scan."
+                   Opacity="0.5"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Center"
+                   Visibility="{x:Bind ViewModel.HasResults, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert, Mode=OneWay}" />
+    </Grid>
+</Page>

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 
 namespace FiiiAssist.ViewModels;
 
+[Microsoft.UI.Xaml.Data.Bindable]
 public partial class BankAccountsViewModel : ObservableObject
 {
     private readonly BankAccountMappingService _mappingService;
@@ -144,6 +145,7 @@ public partial class BankAccountsViewModel : ObservableObject
 /// <summary>
 /// A single row in the bank accounts table: account info (read-only) + editable regex pattern.
 /// </summary>
+[Microsoft.UI.Xaml.Data.Bindable]
 public partial class BankAccountRow : ObservableObject
 {
     /// <summary>Firefly III account ID (read-only, from API).</summary>

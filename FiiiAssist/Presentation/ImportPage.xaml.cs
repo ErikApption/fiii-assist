@@ -11,13 +11,13 @@ using System.Linq;
 
 namespace FiiiAssist.Pages;
 
-public sealed partial class DashboardPage : Page
+public sealed partial class ImportPage : Page
 {
     public DashboardViewModel ViewModel => App.DashboardViewModel;
 
     private DispatcherQueue? _dispatcher;
 
-    public DashboardPage()
+    public ImportPage()
     {
         InitializeComponent();
         _dispatcher = DispatcherQueue.GetForCurrentThread();

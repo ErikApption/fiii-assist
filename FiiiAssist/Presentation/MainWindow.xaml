@@ -16,7 +16,7 @@
             <NavigationView.MenuItems>
                 <NavigationViewItem
                     x:Name="DashboardNavItem"
-                    Content="Dashboard"
+                    Content="Import Data"
                     Tag="Dashboard"
                     Icon="Home"
                     IsEnabled="{x:Bind SettingsVM.IsConnected, Mode=OneWay}" />
@@ -24,6 +24,16 @@
                     Content="Bank Accounts"
                     Tag="BankAccounts"
                     Icon="ContactInfo"
+                    IsEnabled="{x:Bind SettingsVM.IsConnected, Mode=OneWay}" />
+                <NavigationViewItem
+                    Content="Duplicate Checker"
+                    Tag="DuplicateChecker"
+                    Icon="Find"
+                    IsEnabled="{x:Bind SettingsVM.IsConnected, Mode=OneWay}" />
+                <NavigationViewItem
+                    Content="Subscription Detector"
+                    Tag="SubscriptionDetector"
+                    Icon="RepeatAll"
                     IsEnabled="{x:Bind SettingsVM.IsConnected, Mode=OneWay}" />
                 <NavigationViewItem
                     Content="Settings"

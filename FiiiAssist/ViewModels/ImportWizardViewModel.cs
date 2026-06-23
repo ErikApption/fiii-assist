@@ -18,6 +18,7 @@ namespace FiiiAssist.ViewModels;
 /// Guides the user through account selection, file picking,
 /// transaction preview, and import execution.
 /// </summary>
+[Microsoft.UI.Xaml.Data.Bindable]
 public partial class ImportWizardViewModel : ObservableObject
 {
     private readonly FireflyIIIService _fireflyService;
@@ -92,6 +93,9 @@ public partial class ImportWizardViewModel : ObservableObject
     public bool IsTransactionListEmpty => TransactionCount == 0;
 
     // ── Import progress ───────────────────────────────────────────────────────
+
+    [ObservableProperty]
+    private bool _isCheckingExisting;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ProcessedCount))]
@@ -296,7 +300,6 @@ public partial class ImportWizardViewModel : ObservableObject
 
         // Transition to Importing step and disable navigation
         CurrentStep = WizardStep.Importing;
-        TotalCount = Transactions.Count;
         ImportedCount = 0;
         FailedCount = 0;
         SkippedCount = 0;
@@ -324,6 +327,7 @@ public partial class ImportWizardViewModel : ObservableObject
         HashSet<string>? existingIds = null;
         if (settings.SkipDuplicateTransactions)
         {
+            IsCheckingExisting = true;
             try
             {
                 var dates = Transactions.Select(t => t.Date).ToList();
@@ -335,7 +339,30 @@ public partial class ImportWizardViewModel : ObservableObject
             {
                 // If lookup fails, proceed without skipping — server-side dedup still applies
             }
+            finally
+            {
+                IsCheckingExisting = false;
+            }
         }
+
+        // Determine the actual number of transactions to import (excluding pre-known duplicates)
+        var transactionsToImport = Transactions.ToList();
+        int preSkippedCount = 0;
+        if (existingIds != null && existingIds.Count > 0)
+        {
+            var filtered = new List<FIIITransaction>();
+            foreach (var tx in transactionsToImport)
+            {
+                if (!string.IsNullOrWhiteSpace(tx.FitId) && existingIds.Contains(tx.FitId))
+                    preSkippedCount++;
+                else
+                    filtered.Add(tx);
+            }
+            transactionsToImport = filtered;
+            SkippedCount = preSkippedCount;
+        }
+
+        TotalCount = transactionsToImport.Count;
 
         // Wire up progress callback to update UI counters
         _fireflyService.OnTransactionProcessed = (tx, result) =>
@@ -356,10 +383,10 @@ public partial class ImportWizardViewModel : ObservableObject
 
         try
         {
-            // Pass the full transaction list — the service handles iteration and progress
+            // Pass only the transactions that weren't already pre-filtered as duplicates
             await _fireflyService.ImportTransactionsAsync(
                 accountId,
-                Transactions.ToList(),
+                transactionsToImport,
                 settings.ErrorIfDuplicateHash,
                 settings.SkipDuplicatesByContent,
                 useBatchMode: settings.UseBatchMode,
@@ -373,6 +400,16 @@ public partial class ImportWizardViewModel : ObservableObject
 
         // Transition to Results step
         CurrentStep = WizardStep.Results;
+
+        // Update QFX file tracking status based on import result
+        if (!string.IsNullOrWhiteSpace(SelectedFilePath))
+        {
+            var tracker = App.QfxFileTrackingService;
+            if (FailedCount == 0)
+                tracker.MarkImported(SelectedFilePath);
+            else
+                tracker.MarkFailed(SelectedFilePath);
+        }
 
         // Raise ImportCompleted event so DashboardViewModel can add a log entry
         var logEntry = new ImportLogEntry
@@ -450,6 +487,7 @@ public partial class ImportWizardViewModel : ObservableObject
         SelectedFileName = string.Empty;
         ErrorMessage = string.Empty;
         IsLoading = false;
+        IsCheckingExisting = false;
         CanGoNext = false;
         CanGoBack = false;
         ImportedCount = 0;
@@ -471,6 +509,7 @@ public partial class ImportWizardViewModel : ObservableObject
         FailedCount = 0;
         SkippedCount = 0;
         TotalCount = 0;
+        IsCheckingExisting = false;
         SelectedFilePath = string.Empty;
         SelectedFileName = string.Empty;
         SelectedAccount = null;

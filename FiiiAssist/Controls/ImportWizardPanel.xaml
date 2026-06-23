@@ -279,8 +279,16 @@
                                   Width="48" Height="48"
                                   HorizontalAlignment="Center" />
 
+                    <!-- Checking existing transactions phase -->
                     <TextBlock HorizontalAlignment="Center"
-                               TextAlignment="Center">
+                               TextAlignment="Center"
+                               Text="Reading existing transactions…"
+                               Visibility="{x:Bind ViewModel.IsCheckingExisting, Converter={StaticResource BoolToVisibility}, Mode=OneWay}" />
+
+                    <!-- Active import phase -->
+                    <TextBlock HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               Visibility="{x:Bind ViewModel.IsCheckingExisting, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert, Mode=OneWay}">
                         <Run Text="Importing transactions... " />
                         <Run Text="{x:Bind ViewModel.ProcessedCount, Mode=OneWay}" />
                         <Run Text=" / " />

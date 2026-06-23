@@ -9,6 +9,7 @@ using System.Collections.Specialized;
 using System.Threading.Tasks;
 namespace FiiiAssist.ViewModels;
 
+[Microsoft.UI.Xaml.Data.Bindable]
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly SettingsService     _settings;

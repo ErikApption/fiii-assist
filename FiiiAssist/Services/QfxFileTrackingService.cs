@@ -54,8 +54,8 @@ public class QfxFileTrackingService
 
             if (existing is not null)
             {
-                // Already tracked — only include if still pending
-                if (existing.Status == QfxFileStatus.Pending)
+                // Already tracked — include if still pending or previously failed
+                if (existing.Status is QfxFileStatus.Pending or QfxFileStatus.Failed)
                     pendingFiles.Add(existing);
                 continue;
             }

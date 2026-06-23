@@ -5,6 +5,7 @@ namespace FiiiAssist.Models;
 /// <summary>
 /// Represents one QFX import event shown in the dashboard log.
 /// </summary>
+[Microsoft.UI.Xaml.Data.Bindable]
 public class ImportLogEntry
 {
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
